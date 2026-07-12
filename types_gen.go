@@ -35,6 +35,7 @@ func (v Log) MarshalJSON() ([]byte, error) {
 }
 
 // Address A physical or virtual address, or a range of addresses, in an 'addressable region' (memory or a binary file).
+// Use NewAddress when constructing a value so schema defaults are initialized.
 type Address struct {
 	// AbsoluteAddress The address expressed as a byte offset from the start of the addressable region.
 	AbsoluteAddress int `json:"absoluteAddress,omitempty,omitzero"`
@@ -56,6 +57,15 @@ type Address struct {
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
 	// RelativeAddress The address expressed as a byte offset from the absolute address of the top-most parent object.
 	RelativeAddress int `json:"relativeAddress,omitempty,omitzero"`
+}
+
+// NewAddress returns an initialized Address with the defaults defined by SARIF 2.1.0.
+func NewAddress() Address {
+	return Address{
+		AbsoluteAddress: -1,
+		Index:           -1,
+		ParentIndex:     -1,
+	}
 }
 
 func (v Address) MarshalJSON() ([]byte, error) {
@@ -95,10 +105,7 @@ func (v Address) MarshalJSON() ([]byte, error) {
 
 func (v *Address) UnmarshalJSON(data []byte) error {
 	type alias Address
-	var tmp alias
-	tmp.AbsoluteAddress = -1
-	tmp.Index = -1
-	tmp.ParentIndex = -1
+	tmp := alias(NewAddress())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -107,6 +114,7 @@ func (v *Address) UnmarshalJSON(data []byte) error {
 }
 
 // Artifact A single artifact. In some cases, this artifact might be nested within another artifact.
+// Use NewArtifact when constructing a value so schema defaults are initialized.
 type Artifact struct {
 	// Contents The contents of the artifact.
 	Contents ArtifactContent `json:"contents,omitempty,omitzero"`
@@ -134,6 +142,15 @@ type Artifact struct {
 	Roles []string `json:"roles,omitempty,omitzero"`
 	// SourceLanguage Specifies the source language for any artifact object that refers to a text file that contains source code.
 	SourceLanguage string `json:"sourceLanguage,omitempty,omitzero"`
+}
+
+// NewArtifact returns an initialized Artifact with the defaults defined by SARIF 2.1.0.
+func NewArtifact() Artifact {
+	return Artifact{
+		Length:      -1,
+		ParentIndex: -1,
+		Roles:       []string{},
+	}
 }
 
 func (v Artifact) MarshalJSON() ([]byte, error) {
@@ -182,10 +199,7 @@ func (v Artifact) MarshalJSON() ([]byte, error) {
 
 func (v *Artifact) UnmarshalJSON(data []byte) error {
 	type alias Artifact
-	var tmp alias
-	tmp.Length = -1
-	tmp.ParentIndex = -1
-	tmp.Roles = []string{}
+	tmp := alias(NewArtifact())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -243,6 +257,7 @@ func (v ArtifactContent) MarshalJSON() ([]byte, error) {
 }
 
 // ArtifactLocation Specifies the location of an artifact.
+// Use NewArtifactLocation when constructing a value so schema defaults are initialized.
 type ArtifactLocation struct {
 	// Description A short description of the artifact location.
 	Description Message `json:"description,omitempty,omitzero"`
@@ -254,6 +269,13 @@ type ArtifactLocation struct {
 	URI string `json:"uri,omitempty,omitzero"`
 	// URIBaseID A string which indirectly specifies the absolute URI with respect to which a relative URI in the "uri" property is interpreted.
 	URIBaseID string `json:"uriBaseId,omitempty,omitzero"`
+}
+
+// NewArtifactLocation returns an initialized ArtifactLocation with the defaults defined by SARIF 2.1.0.
+func NewArtifactLocation() ArtifactLocation {
+	return ArtifactLocation{
+		Index: -1,
+	}
 }
 
 func (v ArtifactLocation) MarshalJSON() ([]byte, error) {
@@ -278,8 +300,7 @@ func (v ArtifactLocation) MarshalJSON() ([]byte, error) {
 
 func (v *ArtifactLocation) UnmarshalJSON(data []byte) error {
 	type alias ArtifactLocation
-	var tmp alias
-	tmp.Index = -1
+	tmp := alias(NewArtifactLocation())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -288,6 +309,7 @@ func (v *ArtifactLocation) UnmarshalJSON(data []byte) error {
 }
 
 // Attachment An artifact relevant to a result.
+// Use NewAttachment when constructing a value so schema defaults are initialized.
 type Attachment struct {
 	// ArtifactLocation The location of the attachment.
 	ArtifactLocation ArtifactLocation `json:"artifactLocation"`
@@ -299,6 +321,14 @@ type Attachment struct {
 	Rectangles []Rectangle `json:"rectangles,omitempty,omitzero"`
 	// Regions An array of regions of interest within the attachment.
 	Regions []Region `json:"regions,omitempty,omitzero"`
+}
+
+// NewAttachment returns an initialized Attachment with the defaults defined by SARIF 2.1.0.
+func NewAttachment() Attachment {
+	return Attachment{
+		Rectangles: []Rectangle{},
+		Regions:    []Region{},
+	}
 }
 
 func (v Attachment) MarshalJSON() ([]byte, error) {
@@ -321,9 +351,7 @@ func (v Attachment) MarshalJSON() ([]byte, error) {
 
 func (v *Attachment) UnmarshalJSON(data []byte) error {
 	type alias Attachment
-	var tmp alias
-	tmp.Rectangles = []Rectangle{}
-	tmp.Regions = []Region{}
+	tmp := alias(NewAttachment())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -374,6 +402,7 @@ func (v ConfigurationOverride) MarshalJSON() ([]byte, error) {
 }
 
 // Conversion Describes how a converter transformed the output of a static analysis tool from the analysis tool's native output format into the SARIF format.
+// Use NewConversion when constructing a value so schema defaults are initialized.
 type Conversion struct {
 	// AnalysisToolLogFiles The locations of the analysis tool's per-run log files.
 	AnalysisToolLogFiles []ArtifactLocation `json:"analysisToolLogFiles,omitempty,omitzero"`
@@ -383,6 +412,13 @@ type Conversion struct {
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
 	// Tool A tool object that describes the converter.
 	Tool Tool `json:"tool"`
+}
+
+// NewConversion returns an initialized Conversion with the defaults defined by SARIF 2.1.0.
+func NewConversion() Conversion {
+	return Conversion{
+		AnalysisToolLogFiles: []ArtifactLocation{},
+	}
 }
 
 func (v Conversion) MarshalJSON() ([]byte, error) {
@@ -402,8 +438,7 @@ func (v Conversion) MarshalJSON() ([]byte, error) {
 
 func (v *Conversion) UnmarshalJSON(data []byte) error {
 	type alias Conversion
-	var tmp alias
-	tmp.AnalysisToolLogFiles = []ArtifactLocation{}
+	tmp := alias(NewConversion())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -472,6 +507,7 @@ func (v EdgeTraversal) MarshalJSON() ([]byte, error) {
 }
 
 // Exception Describes a runtime exception encountered during the execution of an analysis tool.
+// Use NewException when constructing a value so schema defaults are initialized.
 type Exception struct {
 	// InnerExceptions An array of exception objects each of which is considered a cause of this exception.
 	InnerExceptions []Exception `json:"innerExceptions,omitempty,omitzero"`
@@ -483,6 +519,13 @@ type Exception struct {
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
 	// Stack The sequence of function calls leading to the exception.
 	Stack Stack `json:"stack,omitempty,omitzero"`
+}
+
+// NewException returns an initialized Exception with the defaults defined by SARIF 2.1.0.
+func NewException() Exception {
+	return Exception{
+		InnerExceptions: []Exception{},
+	}
 }
 
 func (v Exception) MarshalJSON() ([]byte, error) {
@@ -507,8 +550,7 @@ func (v Exception) MarshalJSON() ([]byte, error) {
 
 func (v *Exception) UnmarshalJSON(data []byte) error {
 	type alias Exception
-	var tmp alias
-	tmp.InnerExceptions = []Exception{}
+	tmp := alias(NewException())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -517,6 +559,7 @@ func (v *Exception) UnmarshalJSON(data []byte) error {
 }
 
 // ExternalProperties The top-level element of an external property file.
+// Use NewExternalProperties when constructing a value so schema defaults are initialized.
 type ExternalProperties struct {
 	// Addresses Addresses that will be merged with a separate run.
 	Addresses []Address `json:"addresses,omitempty,omitzero"`
@@ -560,6 +603,24 @@ type ExternalProperties struct {
 	WebRequests []WebRequest `json:"webRequests,omitempty,omitzero"`
 	// WebResponses Responses that will be merged with a separate run.
 	WebResponses []WebResponse `json:"webResponses,omitempty,omitzero"`
+}
+
+// NewExternalProperties returns an initialized ExternalProperties with the defaults defined by SARIF 2.1.0.
+func NewExternalProperties() ExternalProperties {
+	return ExternalProperties{
+		Addresses:           []Address{},
+		Extensions:          []ToolComponent{},
+		Graphs:              []Graph{},
+		Invocations:         []Invocation{},
+		LogicalLocations:    []LogicalLocation{},
+		Policies:            []ToolComponent{},
+		Results:             []Result{},
+		Taxonomies:          []ToolComponent{},
+		ThreadFlowLocations: []ThreadFlowLocation{},
+		Translations:        []ToolComponent{},
+		WebRequests:         []WebRequest{},
+		WebResponses:        []WebResponse{},
+	}
 }
 
 func (v ExternalProperties) MarshalJSON() ([]byte, error) {
@@ -632,19 +693,7 @@ func (v ExternalProperties) MarshalJSON() ([]byte, error) {
 
 func (v *ExternalProperties) UnmarshalJSON(data []byte) error {
 	type alias ExternalProperties
-	var tmp alias
-	tmp.Addresses = []Address{}
-	tmp.Extensions = []ToolComponent{}
-	tmp.Graphs = []Graph{}
-	tmp.Invocations = []Invocation{}
-	tmp.LogicalLocations = []LogicalLocation{}
-	tmp.Policies = []ToolComponent{}
-	tmp.Results = []Result{}
-	tmp.Taxonomies = []ToolComponent{}
-	tmp.ThreadFlowLocations = []ThreadFlowLocation{}
-	tmp.Translations = []ToolComponent{}
-	tmp.WebRequests = []WebRequest{}
-	tmp.WebResponses = []WebResponse{}
+	tmp := alias(NewExternalProperties())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -653,6 +702,7 @@ func (v *ExternalProperties) UnmarshalJSON(data []byte) error {
 }
 
 // ExternalPropertyFileReference Contains information that enables a SARIF consumer to locate the external property file that contains the value of an externalized property associated with the run.
+// Use NewExternalPropertyFileReference when constructing a value so schema defaults are initialized.
 type ExternalPropertyFileReference struct {
 	// GUID A stable, unique identifer for the external property file in the form of a GUID.
 	GUID string `json:"guid,omitempty,omitzero"`
@@ -662,6 +712,13 @@ type ExternalPropertyFileReference struct {
 	Location ArtifactLocation `json:"location,omitempty,omitzero"`
 	// Properties Key/value pairs that provide additional information about the external property file.
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
+}
+
+// NewExternalPropertyFileReference returns an initialized ExternalPropertyFileReference with the defaults defined by SARIF 2.1.0.
+func NewExternalPropertyFileReference() ExternalPropertyFileReference {
+	return ExternalPropertyFileReference{
+		ItemCount: -1,
+	}
 }
 
 func (v ExternalPropertyFileReference) MarshalJSON() ([]byte, error) {
@@ -683,8 +740,7 @@ func (v ExternalPropertyFileReference) MarshalJSON() ([]byte, error) {
 
 func (v *ExternalPropertyFileReference) UnmarshalJSON(data []byte) error {
 	type alias ExternalPropertyFileReference
-	var tmp alias
-	tmp.ItemCount = -1
+	tmp := alias(NewExternalPropertyFileReference())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -693,6 +749,7 @@ func (v *ExternalPropertyFileReference) UnmarshalJSON(data []byte) error {
 }
 
 // ExternalPropertyFileReferences References to external property files that should be inlined with the content of a root log file.
+// Use NewExternalPropertyFileReferences when constructing a value so schema defaults are initialized.
 type ExternalPropertyFileReferences struct {
 	// Addresses An array of external property files containing run.addresses arrays to be merged with the root log file.
 	Addresses []ExternalPropertyFileReference `json:"addresses,omitempty,omitzero"`
@@ -728,6 +785,25 @@ type ExternalPropertyFileReferences struct {
 	WebRequests []ExternalPropertyFileReference `json:"webRequests,omitempty,omitzero"`
 	// WebResponses An array of external property files containing run.responses arrays to be merged with the root log file.
 	WebResponses []ExternalPropertyFileReference `json:"webResponses,omitempty,omitzero"`
+}
+
+// NewExternalPropertyFileReferences returns an initialized ExternalPropertyFileReferences with the defaults defined by SARIF 2.1.0.
+func NewExternalPropertyFileReferences() ExternalPropertyFileReferences {
+	return ExternalPropertyFileReferences{
+		Addresses:           []ExternalPropertyFileReference{},
+		Artifacts:           []ExternalPropertyFileReference{},
+		Extensions:          []ExternalPropertyFileReference{},
+		Graphs:              []ExternalPropertyFileReference{},
+		Invocations:         []ExternalPropertyFileReference{},
+		LogicalLocations:    []ExternalPropertyFileReference{},
+		Policies:            []ExternalPropertyFileReference{},
+		Results:             []ExternalPropertyFileReference{},
+		Taxonomies:          []ExternalPropertyFileReference{},
+		ThreadFlowLocations: []ExternalPropertyFileReference{},
+		Translations:        []ExternalPropertyFileReference{},
+		WebRequests:         []ExternalPropertyFileReference{},
+		WebResponses:        []ExternalPropertyFileReference{},
+	}
 }
 
 func (v ExternalPropertyFileReferences) MarshalJSON() ([]byte, error) {
@@ -788,20 +864,7 @@ func (v ExternalPropertyFileReferences) MarshalJSON() ([]byte, error) {
 
 func (v *ExternalPropertyFileReferences) UnmarshalJSON(data []byte) error {
 	type alias ExternalPropertyFileReferences
-	var tmp alias
-	tmp.Addresses = []ExternalPropertyFileReference{}
-	tmp.Artifacts = []ExternalPropertyFileReference{}
-	tmp.Extensions = []ExternalPropertyFileReference{}
-	tmp.Graphs = []ExternalPropertyFileReference{}
-	tmp.Invocations = []ExternalPropertyFileReference{}
-	tmp.LogicalLocations = []ExternalPropertyFileReference{}
-	tmp.Policies = []ExternalPropertyFileReference{}
-	tmp.Results = []ExternalPropertyFileReference{}
-	tmp.Taxonomies = []ExternalPropertyFileReference{}
-	tmp.ThreadFlowLocations = []ExternalPropertyFileReference{}
-	tmp.Translations = []ExternalPropertyFileReference{}
-	tmp.WebRequests = []ExternalPropertyFileReference{}
-	tmp.WebResponses = []ExternalPropertyFileReference{}
+	tmp := alias(NewExternalPropertyFileReferences())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -832,6 +895,7 @@ func (v Fix) MarshalJSON() ([]byte, error) {
 }
 
 // Graph A network of nodes and directed edges that describes some aspect of the structure of the code (for example, a call graph).
+// Use NewGraph when constructing a value so schema defaults are initialized.
 type Graph struct {
 	// Description A description of the graph.
 	Description Message `json:"description,omitempty,omitzero"`
@@ -841,6 +905,14 @@ type Graph struct {
 	Nodes []Node `json:"nodes,omitempty,omitzero"`
 	// Properties Key/value pairs that provide additional information about the graph.
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
+}
+
+// NewGraph returns an initialized Graph with the defaults defined by SARIF 2.1.0.
+func NewGraph() Graph {
+	return Graph{
+		Edges: []Edge{},
+		Nodes: []Node{},
+	}
 }
 
 func (v Graph) MarshalJSON() ([]byte, error) {
@@ -862,9 +934,7 @@ func (v Graph) MarshalJSON() ([]byte, error) {
 
 func (v *Graph) UnmarshalJSON(data []byte) error {
 	type alias Graph
-	var tmp alias
-	tmp.Edges = []Edge{}
-	tmp.Nodes = []Node{}
+	tmp := alias(NewGraph())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -873,6 +943,7 @@ func (v *Graph) UnmarshalJSON(data []byte) error {
 }
 
 // GraphTraversal Represents a path through a graph.
+// Use NewGraphTraversal when constructing a value so schema defaults are initialized.
 type GraphTraversal struct {
 	// Description A description of this graph traversal.
 	Description Message `json:"description,omitempty,omitzero"`
@@ -888,6 +959,15 @@ type GraphTraversal struct {
 	ResultGraphIndex int `json:"resultGraphIndex,omitempty,omitzero"`
 	// RunGraphIndex The index within the run.graphs to be associated with the result.
 	RunGraphIndex int `json:"runGraphIndex,omitempty,omitzero"`
+}
+
+// NewGraphTraversal returns an initialized GraphTraversal with the defaults defined by SARIF 2.1.0.
+func NewGraphTraversal() GraphTraversal {
+	return GraphTraversal{
+		EdgeTraversals:   []EdgeTraversal{},
+		ResultGraphIndex: -1,
+		RunGraphIndex:    -1,
+	}
 }
 
 func (v GraphTraversal) MarshalJSON() ([]byte, error) {
@@ -918,10 +998,7 @@ func (v GraphTraversal) MarshalJSON() ([]byte, error) {
 
 func (v *GraphTraversal) UnmarshalJSON(data []byte) error {
 	type alias GraphTraversal
-	var tmp alias
-	tmp.EdgeTraversals = []EdgeTraversal{}
-	tmp.ResultGraphIndex = -1
-	tmp.RunGraphIndex = -1
+	tmp := alias(NewGraphTraversal())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -930,6 +1007,7 @@ func (v *GraphTraversal) UnmarshalJSON(data []byte) error {
 }
 
 // Invocation The runtime environment of the analysis tool run.
+// Use NewInvocation when constructing a value so schema defaults are initialized.
 type Invocation struct {
 	// Account The account that ran the analysis tool.
 	Account string `json:"account,omitempty,omitzero"`
@@ -983,6 +1061,16 @@ type Invocation struct {
 	ToolExecutionNotifications []Notification `json:"toolExecutionNotifications,omitempty,omitzero"`
 	// WorkingDirectory The working directory for the analysis tool run.
 	WorkingDirectory ArtifactLocation `json:"workingDirectory,omitempty,omitzero"`
+}
+
+// NewInvocation returns an initialized Invocation with the defaults defined by SARIF 2.1.0.
+func NewInvocation() Invocation {
+	return Invocation{
+		NotificationConfigurationOverrides: []ConfigurationOverride{},
+		RuleConfigurationOverrides:         []ConfigurationOverride{},
+		ToolConfigurationNotifications:     []Notification{},
+		ToolExecutionNotifications:         []Notification{},
+	}
 }
 
 func (v Invocation) MarshalJSON() ([]byte, error) {
@@ -1068,11 +1156,7 @@ func (v Invocation) MarshalJSON() ([]byte, error) {
 
 func (v *Invocation) UnmarshalJSON(data []byte) error {
 	type alias Invocation
-	var tmp alias
-	tmp.NotificationConfigurationOverrides = []ConfigurationOverride{}
-	tmp.RuleConfigurationOverrides = []ConfigurationOverride{}
-	tmp.ToolConfigurationNotifications = []Notification{}
-	tmp.ToolExecutionNotifications = []Notification{}
+	tmp := alias(NewInvocation())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -1081,6 +1165,7 @@ func (v *Invocation) UnmarshalJSON(data []byte) error {
 }
 
 // Location A location within a programming artifact.
+// Use NewLocation when constructing a value so schema defaults are initialized.
 type Location struct {
 	// Annotations A set of regions relevant to the location.
 	Annotations []Region `json:"annotations,omitempty,omitzero"`
@@ -1096,6 +1181,16 @@ type Location struct {
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
 	// Relationships An array of objects that describe relationships between this location and others.
 	Relationships []LocationRelationship `json:"relationships,omitempty,omitzero"`
+}
+
+// NewLocation returns an initialized Location with the defaults defined by SARIF 2.1.0.
+func NewLocation() Location {
+	return Location{
+		Annotations:      []Region{},
+		ID:               -1,
+		LogicalLocations: []LogicalLocation{},
+		Relationships:    []LocationRelationship{},
+	}
 }
 
 func (v Location) MarshalJSON() ([]byte, error) {
@@ -1126,11 +1221,7 @@ func (v Location) MarshalJSON() ([]byte, error) {
 
 func (v *Location) UnmarshalJSON(data []byte) error {
 	type alias Location
-	var tmp alias
-	tmp.Annotations = []Region{}
-	tmp.ID = -1
-	tmp.LogicalLocations = []LogicalLocation{}
-	tmp.Relationships = []LocationRelationship{}
+	tmp := alias(NewLocation())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -1139,6 +1230,7 @@ func (v *Location) UnmarshalJSON(data []byte) error {
 }
 
 // LocationRelationship Information about the relation of one location to another.
+// Use NewLocationRelationship when constructing a value so schema defaults are initialized.
 type LocationRelationship struct {
 	// Description A description of the location relationship.
 	Description Message `json:"description,omitempty,omitzero"`
@@ -1148,6 +1240,13 @@ type LocationRelationship struct {
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
 	// Target A reference to the related location.
 	Target int `json:"target"`
+}
+
+// NewLocationRelationship returns an initialized LocationRelationship with the defaults defined by SARIF 2.1.0.
+func NewLocationRelationship() LocationRelationship {
+	return LocationRelationship{
+		Kinds: []string{"relevant"},
+	}
 }
 
 func (v LocationRelationship) MarshalJSON() ([]byte, error) {
@@ -1167,8 +1266,7 @@ func (v LocationRelationship) MarshalJSON() ([]byte, error) {
 
 func (v *LocationRelationship) UnmarshalJSON(data []byte) error {
 	type alias LocationRelationship
-	var tmp alias
-	tmp.Kinds = []string{"relevant"}
+	tmp := alias(NewLocationRelationship())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -1177,6 +1275,7 @@ func (v *LocationRelationship) UnmarshalJSON(data []byte) error {
 }
 
 // LogicalLocation A logical location of a construct that produced a result.
+// Use NewLogicalLocation when constructing a value so schema defaults are initialized.
 type LogicalLocation struct {
 	// DecoratedName The machine-readable name for the logical location, such as a mangled function name provided by a C++ compiler that encodes calling convention, return type and other details along with the function name.
 	DecoratedName string `json:"decoratedName,omitempty,omitzero"`
@@ -1192,6 +1291,14 @@ type LogicalLocation struct {
 	ParentIndex int `json:"parentIndex,omitempty,omitzero"`
 	// Properties Key/value pairs that provide additional information about the logical location.
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
+}
+
+// NewLogicalLocation returns an initialized LogicalLocation with the defaults defined by SARIF 2.1.0.
+func NewLogicalLocation() LogicalLocation {
+	return LogicalLocation{
+		Index:       -1,
+		ParentIndex: -1,
+	}
 }
 
 func (v LogicalLocation) MarshalJSON() ([]byte, error) {
@@ -1222,9 +1329,7 @@ func (v LogicalLocation) MarshalJSON() ([]byte, error) {
 
 func (v *LogicalLocation) UnmarshalJSON(data []byte) error {
 	type alias LogicalLocation
-	var tmp alias
-	tmp.Index = -1
-	tmp.ParentIndex = -1
+	tmp := alias(NewLogicalLocation())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -1233,6 +1338,7 @@ func (v *LogicalLocation) UnmarshalJSON(data []byte) error {
 }
 
 // Message Encapsulates a message intended to be read by the end user.
+// Use NewMessage when constructing a value so schema defaults are initialized.
 type Message struct {
 	// Arguments An array of strings to substitute into the message string.
 	Arguments []string `json:"arguments,omitempty,omitzero"`
@@ -1244,6 +1350,13 @@ type Message struct {
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
 	// Text A plain text message string.
 	Text string `json:"text,omitempty,omitzero"`
+}
+
+// NewMessage returns an initialized Message with the defaults defined by SARIF 2.1.0.
+func NewMessage() Message {
+	return Message{
+		Arguments: []string{},
+	}
 }
 
 func (v Message) MarshalJSON() ([]byte, error) {
@@ -1268,8 +1381,7 @@ func (v Message) MarshalJSON() ([]byte, error) {
 
 func (v *Message) UnmarshalJSON(data []byte) error {
 	type alias Message
-	var tmp alias
-	tmp.Arguments = []string{}
+	tmp := alias(NewMessage())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -1300,6 +1412,7 @@ func (v MultiformatMessageString) MarshalJSON() ([]byte, error) {
 }
 
 // Node Represents a node in a graph.
+// Use NewNode when constructing a value so schema defaults are initialized.
 type Node struct {
 	// Children Array of child nodes.
 	Children []Node `json:"children,omitempty,omitzero"`
@@ -1311,6 +1424,13 @@ type Node struct {
 	Location Location `json:"location,omitempty,omitzero"`
 	// Properties Key/value pairs that provide additional information about the node.
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
+}
+
+// NewNode returns an initialized Node with the defaults defined by SARIF 2.1.0.
+func NewNode() Node {
+	return Node{
+		Children: []Node{},
+	}
 }
 
 func (v Node) MarshalJSON() ([]byte, error) {
@@ -1333,8 +1453,7 @@ func (v Node) MarshalJSON() ([]byte, error) {
 
 func (v *Node) UnmarshalJSON(data []byte) error {
 	type alias Node
-	var tmp alias
-	tmp.Children = []Node{}
+	tmp := alias(NewNode())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -1343,6 +1462,7 @@ func (v *Node) UnmarshalJSON(data []byte) error {
 }
 
 // Notification Describes a condition relevant to the tool itself, as opposed to being relevant to a target being analyzed by the tool.
+// Use NewNotification when constructing a value so schema defaults are initialized.
 type Notification struct {
 	// AssociatedRule A reference used to locate the rule descriptor associated with this notification.
 	AssociatedRule ReportingDescriptorReference `json:"associatedRule,omitempty,omitzero"`
@@ -1362,6 +1482,14 @@ type Notification struct {
 	ThreadID int `json:"threadId,omitempty,omitzero"`
 	// TimeUtc The Coordinated Universal Time (UTC) date and time at which the analysis tool generated the notification.
 	TimeUtc string `json:"timeUtc,omitempty,omitzero"`
+}
+
+// NewNotification returns an initialized Notification with the defaults defined by SARIF 2.1.0.
+func NewNotification() Notification {
+	return Notification{
+		Level:     "warning",
+		Locations: []Location{},
+	}
 }
 
 func (v Notification) MarshalJSON() ([]byte, error) {
@@ -1396,9 +1524,7 @@ func (v Notification) MarshalJSON() ([]byte, error) {
 
 func (v *Notification) UnmarshalJSON(data []byte) error {
 	type alias Notification
-	var tmp alias
-	tmp.Level = "warning"
-	tmp.Locations = []Location{}
+	tmp := alias(NewNotification())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -1483,6 +1609,7 @@ func (v Rectangle) MarshalJSON() ([]byte, error) {
 }
 
 // Region A region within an artifact where a result was detected.
+// Use NewRegion when constructing a value so schema defaults are initialized.
 type Region struct {
 	// ByteLength The length of the region in bytes.
 	ByteLength int `json:"byteLength,omitempty,omitzero"`
@@ -1508,6 +1635,14 @@ type Region struct {
 	StartColumn int `json:"startColumn,omitempty,omitzero"`
 	// StartLine The line number of the first character in the region.
 	StartLine int `json:"startLine,omitempty,omitzero"`
+}
+
+// NewRegion returns an initialized Region with the defaults defined by SARIF 2.1.0.
+func NewRegion() Region {
+	return Region{
+		ByteOffset: -1,
+		CharOffset: -1,
+	}
 }
 
 func (v Region) MarshalJSON() ([]byte, error) {
@@ -1553,9 +1688,7 @@ func (v Region) MarshalJSON() ([]byte, error) {
 
 func (v *Region) UnmarshalJSON(data []byte) error {
 	type alias Region
-	var tmp alias
-	tmp.ByteOffset = -1
-	tmp.CharOffset = -1
+	tmp := alias(NewRegion())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -1586,6 +1719,7 @@ func (v Replacement) MarshalJSON() ([]byte, error) {
 }
 
 // ReportingConfiguration Information about a rule or notification that can be configured at runtime.
+// Use NewReportingConfiguration when constructing a value so schema defaults are initialized.
 type ReportingConfiguration struct {
 	// Enabled Specifies whether the report may be produced during the scan.
 	Enabled bool `json:"enabled,omitempty,omitzero"`
@@ -1597,6 +1731,15 @@ type ReportingConfiguration struct {
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
 	// Rank Specifies the relative priority of the report. Used for analysis output only.
 	Rank float64 `json:"rank,omitempty,omitzero"`
+}
+
+// NewReportingConfiguration returns an initialized ReportingConfiguration with the defaults defined by SARIF 2.1.0.
+func NewReportingConfiguration() ReportingConfiguration {
+	return ReportingConfiguration{
+		Enabled: true,
+		Level:   "warning",
+		Rank:    float64(-1),
+	}
 }
 
 func (v ReportingConfiguration) MarshalJSON() ([]byte, error) {
@@ -1613,7 +1756,7 @@ func (v ReportingConfiguration) MarshalJSON() ([]byte, error) {
 	if includeNonZero(v.Properties) {
 		fields["properties"] = v.Properties
 	}
-	if includeNonDefault(v.Rank, -1) {
+	if includeNonDefault(v.Rank, float64(-1)) {
 		fields["rank"] = v.Rank
 	}
 	return json.Marshal(fields)
@@ -1621,10 +1764,7 @@ func (v ReportingConfiguration) MarshalJSON() ([]byte, error) {
 
 func (v *ReportingConfiguration) UnmarshalJSON(data []byte) error {
 	type alias ReportingConfiguration
-	var tmp alias
-	tmp.Enabled = true
-	tmp.Level = "warning"
-	tmp.Rank = -1
+	tmp := alias(NewReportingConfiguration())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -1633,6 +1773,7 @@ func (v *ReportingConfiguration) UnmarshalJSON(data []byte) error {
 }
 
 // ReportingDescriptor Metadata that describes a specific report produced by the tool, as part of the analysis it provides or its runtime reporting.
+// Use NewReportingDescriptor when constructing a value so schema defaults are initialized.
 type ReportingDescriptor struct {
 	// DefaultConfiguration Default reporting configuration information.
 	DefaultConfiguration ReportingConfiguration `json:"defaultConfiguration,omitempty,omitzero"`
@@ -1662,6 +1803,13 @@ type ReportingDescriptor struct {
 	Relationships []ReportingDescriptorRelationship `json:"relationships,omitempty,omitzero"`
 	// ShortDescription A concise description of the report. Should be a single sentence that is understandable when visible space is limited to a single line of text.
 	ShortDescription MultiformatMessageString `json:"shortDescription,omitempty,omitzero"`
+}
+
+// NewReportingDescriptor returns an initialized ReportingDescriptor with the defaults defined by SARIF 2.1.0.
+func NewReportingDescriptor() ReportingDescriptor {
+	return ReportingDescriptor{
+		Relationships: []ReportingDescriptorRelationship{},
+	}
 }
 
 func (v ReportingDescriptor) MarshalJSON() ([]byte, error) {
@@ -1711,8 +1859,7 @@ func (v ReportingDescriptor) MarshalJSON() ([]byte, error) {
 
 func (v *ReportingDescriptor) UnmarshalJSON(data []byte) error {
 	type alias ReportingDescriptor
-	var tmp alias
-	tmp.Relationships = []ReportingDescriptorRelationship{}
+	tmp := alias(NewReportingDescriptor())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -1721,6 +1868,7 @@ func (v *ReportingDescriptor) UnmarshalJSON(data []byte) error {
 }
 
 // ReportingDescriptorReference Information about how to locate a relevant reporting descriptor.
+// Use NewReportingDescriptorReference when constructing a value so schema defaults are initialized.
 type ReportingDescriptorReference struct {
 	// GUID A guid that uniquely identifies the descriptor.
 	GUID string `json:"guid,omitempty,omitzero"`
@@ -1732,6 +1880,13 @@ type ReportingDescriptorReference struct {
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
 	// ToolComponent A reference used to locate the toolComponent associated with the descriptor.
 	ToolComponent ToolComponentReference `json:"toolComponent,omitempty,omitzero"`
+}
+
+// NewReportingDescriptorReference returns an initialized ReportingDescriptorReference with the defaults defined by SARIF 2.1.0.
+func NewReportingDescriptorReference() ReportingDescriptorReference {
+	return ReportingDescriptorReference{
+		Index: -1,
+	}
 }
 
 func (v ReportingDescriptorReference) MarshalJSON() ([]byte, error) {
@@ -1756,8 +1911,7 @@ func (v ReportingDescriptorReference) MarshalJSON() ([]byte, error) {
 
 func (v *ReportingDescriptorReference) UnmarshalJSON(data []byte) error {
 	type alias ReportingDescriptorReference
-	var tmp alias
-	tmp.Index = -1
+	tmp := alias(NewReportingDescriptorReference())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -1766,6 +1920,7 @@ func (v *ReportingDescriptorReference) UnmarshalJSON(data []byte) error {
 }
 
 // ReportingDescriptorRelationship Information about the relation of one reporting descriptor to another.
+// Use NewReportingDescriptorRelationship when constructing a value so schema defaults are initialized.
 type ReportingDescriptorRelationship struct {
 	// Description A description of the reporting descriptor relationship.
 	Description Message `json:"description,omitempty,omitzero"`
@@ -1775,6 +1930,13 @@ type ReportingDescriptorRelationship struct {
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
 	// Target A reference to the related reporting descriptor.
 	Target ReportingDescriptorReference `json:"target"`
+}
+
+// NewReportingDescriptorRelationship returns an initialized ReportingDescriptorRelationship with the defaults defined by SARIF 2.1.0.
+func NewReportingDescriptorRelationship() ReportingDescriptorRelationship {
+	return ReportingDescriptorRelationship{
+		Kinds: []string{"relevant"},
+	}
 }
 
 func (v ReportingDescriptorRelationship) MarshalJSON() ([]byte, error) {
@@ -1794,8 +1956,7 @@ func (v ReportingDescriptorRelationship) MarshalJSON() ([]byte, error) {
 
 func (v *ReportingDescriptorRelationship) UnmarshalJSON(data []byte) error {
 	type alias ReportingDescriptorRelationship
-	var tmp alias
-	tmp.Kinds = []string{"relevant"}
+	tmp := alias(NewReportingDescriptorRelationship())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -1804,6 +1965,7 @@ func (v *ReportingDescriptorRelationship) UnmarshalJSON(data []byte) error {
 }
 
 // Result A result produced by an analysis tool.
+// Use NewResult when constructing a value so schema defaults are initialized.
 type Result struct {
 	// AnalysisTarget Identifies the artifact that the analysis tool was instructed to scan. This need not be the same as the artifact where the result actually occurred.
 	AnalysisTarget ArtifactLocation `json:"analysisTarget,omitempty,omitzero"`
@@ -1867,6 +2029,25 @@ type Result struct {
 	WorkItemURIs []string `json:"workItemUris,omitempty,omitzero"`
 }
 
+// NewResult returns an initialized Result with the defaults defined by SARIF 2.1.0.
+func NewResult() Result {
+	return Result{
+		Attachments:      []Attachment{},
+		CodeFlows:        []CodeFlow{},
+		Fixes:            []Fix{},
+		GraphTraversals:  []GraphTraversal{},
+		Graphs:           []Graph{},
+		Kind:             "fail",
+		Level:            "warning",
+		Locations:        []Location{},
+		Rank:             float64(-1),
+		RelatedLocations: []Location{},
+		RuleIndex:        -1,
+		Stacks:           []Stack{},
+		Taxa:             []ReportingDescriptorReference{},
+	}
+}
+
 func (v Result) MarshalJSON() ([]byte, error) {
 	fields := make(map[string]any)
 	if includeNonZero(v.AnalysisTarget) {
@@ -1924,7 +2105,7 @@ func (v Result) MarshalJSON() ([]byte, error) {
 	if includeNonZero(v.Provenance) {
 		fields["provenance"] = v.Provenance
 	}
-	if includeNonDefault(v.Rank, -1) {
+	if includeNonDefault(v.Rank, float64(-1)) {
 		fields["rank"] = v.Rank
 	}
 	if includeNonDefault(v.RelatedLocations, []Location{}) {
@@ -1962,20 +2143,7 @@ func (v Result) MarshalJSON() ([]byte, error) {
 
 func (v *Result) UnmarshalJSON(data []byte) error {
 	type alias Result
-	var tmp alias
-	tmp.Attachments = []Attachment{}
-	tmp.CodeFlows = []CodeFlow{}
-	tmp.Fixes = []Fix{}
-	tmp.GraphTraversals = []GraphTraversal{}
-	tmp.Graphs = []Graph{}
-	tmp.Kind = "fail"
-	tmp.Level = "warning"
-	tmp.Locations = []Location{}
-	tmp.Rank = -1
-	tmp.RelatedLocations = []Location{}
-	tmp.RuleIndex = -1
-	tmp.Stacks = []Stack{}
-	tmp.Taxa = []ReportingDescriptorReference{}
+	tmp := alias(NewResult())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -1984,6 +2152,7 @@ func (v *Result) UnmarshalJSON(data []byte) error {
 }
 
 // ResultProvenance Contains information about how and when a result was detected.
+// Use NewResultProvenance when constructing a value so schema defaults are initialized.
 type ResultProvenance struct {
 	// ConversionSources An array of physicalLocation objects which specify the portions of an analysis tool's output that a converter transformed into the result.
 	ConversionSources []PhysicalLocation `json:"conversionSources,omitempty,omitzero"`
@@ -1999,6 +2168,14 @@ type ResultProvenance struct {
 	LastDetectionTimeUtc string `json:"lastDetectionTimeUtc,omitempty,omitzero"`
 	// Properties Key/value pairs that provide additional information about the result.
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
+}
+
+// NewResultProvenance returns an initialized ResultProvenance with the defaults defined by SARIF 2.1.0.
+func NewResultProvenance() ResultProvenance {
+	return ResultProvenance{
+		ConversionSources: []PhysicalLocation{},
+		InvocationIndex:   -1,
+	}
 }
 
 func (v ResultProvenance) MarshalJSON() ([]byte, error) {
@@ -2029,9 +2206,7 @@ func (v ResultProvenance) MarshalJSON() ([]byte, error) {
 
 func (v *ResultProvenance) UnmarshalJSON(data []byte) error {
 	type alias ResultProvenance
-	var tmp alias
-	tmp.ConversionSources = []PhysicalLocation{}
-	tmp.InvocationIndex = -1
+	tmp := alias(NewResultProvenance())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -2040,6 +2215,7 @@ func (v *ResultProvenance) UnmarshalJSON(data []byte) error {
 }
 
 // Run Describes a single run of an analysis tool, and contains the reported output of that run.
+// Use NewRun when constructing a value so schema defaults are initialized.
 type Run struct {
 	// Addresses Addresses associated with this run instance, if any.
 	Addresses []Address `json:"addresses,omitempty,omitzero"`
@@ -2097,6 +2273,27 @@ type Run struct {
 	WebRequests []WebRequest `json:"webRequests,omitempty,omitzero"`
 	// WebResponses An array of response objects cached at run level.
 	WebResponses []WebResponse `json:"webResponses,omitempty,omitzero"`
+}
+
+// NewRun returns an initialized Run with the defaults defined by SARIF 2.1.0.
+func NewRun() Run {
+	return Run{
+		Addresses:                []Address{},
+		Graphs:                   []Graph{},
+		Invocations:              []Invocation{},
+		Language:                 "en-US",
+		LogicalLocations:         []LogicalLocation{},
+		NewlineSequences:         []string{"\r\n", "\n"},
+		Policies:                 []ToolComponent{},
+		RedactionTokens:          []string{},
+		RunAggregates:            []RunAutomationDetails{},
+		Taxonomies:               []ToolComponent{},
+		ThreadFlowLocations:      []ThreadFlowLocation{},
+		Translations:             []ToolComponent{},
+		VersionControlProvenance: []VersionControlDetails{},
+		WebRequests:              []WebRequest{},
+		WebResponses:             []WebResponse{},
+	}
 }
 
 func (v Run) MarshalJSON() ([]byte, error) {
@@ -2188,22 +2385,7 @@ func (v Run) MarshalJSON() ([]byte, error) {
 
 func (v *Run) UnmarshalJSON(data []byte) error {
 	type alias Run
-	var tmp alias
-	tmp.Addresses = []Address{}
-	tmp.Graphs = []Graph{}
-	tmp.Invocations = []Invocation{}
-	tmp.Language = "en-US"
-	tmp.LogicalLocations = []LogicalLocation{}
-	tmp.NewlineSequences = []string{"\r\n", "\n"}
-	tmp.Policies = []ToolComponent{}
-	tmp.RedactionTokens = []string{}
-	tmp.RunAggregates = []RunAutomationDetails{}
-	tmp.Taxonomies = []ToolComponent{}
-	tmp.ThreadFlowLocations = []ThreadFlowLocation{}
-	tmp.Translations = []ToolComponent{}
-	tmp.VersionControlProvenance = []VersionControlDetails{}
-	tmp.WebRequests = []WebRequest{}
-	tmp.WebResponses = []WebResponse{}
+	tmp := alias(NewRun())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -2287,6 +2469,7 @@ func (v Stack) MarshalJSON() ([]byte, error) {
 }
 
 // StackFrame A function call within a stack trace.
+// Use NewStackFrame when constructing a value so schema defaults are initialized.
 type StackFrame struct {
 	// Location The location to which this stack frame refers.
 	Location Location `json:"location,omitempty,omitzero"`
@@ -2298,6 +2481,13 @@ type StackFrame struct {
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
 	// ThreadID The thread identifier of the stack frame.
 	ThreadID int `json:"threadId,omitempty,omitzero"`
+}
+
+// NewStackFrame returns an initialized StackFrame with the defaults defined by SARIF 2.1.0.
+func NewStackFrame() StackFrame {
+	return StackFrame{
+		Parameters: []string{},
+	}
 }
 
 func (v StackFrame) MarshalJSON() ([]byte, error) {
@@ -2322,8 +2512,7 @@ func (v StackFrame) MarshalJSON() ([]byte, error) {
 
 func (v *StackFrame) UnmarshalJSON(data []byte) error {
 	type alias StackFrame
-	var tmp alias
-	tmp.Parameters = []string{}
+	tmp := alias(NewStackFrame())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -2406,6 +2595,7 @@ func (v ThreadFlow) MarshalJSON() ([]byte, error) {
 }
 
 // ThreadFlowLocation A location visited by an analysis tool while simulating or monitoring the execution of a program.
+// Use NewThreadFlowLocation when constructing a value so schema defaults are initialized.
 type ThreadFlowLocation struct {
 	// ExecutionOrder An integer representing the temporal order in which execution reached this location.
 	ExecutionOrder int `json:"executionOrder,omitempty,omitzero"`
@@ -2435,6 +2625,17 @@ type ThreadFlowLocation struct {
 	WebRequest WebRequest `json:"webRequest,omitempty,omitzero"`
 	// WebResponse A web response associated with this thread flow location.
 	WebResponse WebResponse `json:"webResponse,omitempty,omitzero"`
+}
+
+// NewThreadFlowLocation returns an initialized ThreadFlowLocation with the defaults defined by SARIF 2.1.0.
+func NewThreadFlowLocation() ThreadFlowLocation {
+	return ThreadFlowLocation{
+		ExecutionOrder: -1,
+		Importance:     "important",
+		Index:          -1,
+		Kinds:          []string{},
+		Taxa:           []ReportingDescriptorReference{},
+	}
 }
 
 func (v ThreadFlowLocation) MarshalJSON() ([]byte, error) {
@@ -2486,12 +2687,7 @@ func (v ThreadFlowLocation) MarshalJSON() ([]byte, error) {
 
 func (v *ThreadFlowLocation) UnmarshalJSON(data []byte) error {
 	type alias ThreadFlowLocation
-	var tmp alias
-	tmp.ExecutionOrder = -1
-	tmp.Importance = "important"
-	tmp.Index = -1
-	tmp.Kinds = []string{}
-	tmp.Taxa = []ReportingDescriptorReference{}
+	tmp := alias(NewThreadFlowLocation())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -2500,6 +2696,7 @@ func (v *ThreadFlowLocation) UnmarshalJSON(data []byte) error {
 }
 
 // Tool The analysis tool that was run.
+// Use NewTool when constructing a value so schema defaults are initialized.
 type Tool struct {
 	// Driver The analysis tool that was run.
 	Driver ToolComponent `json:"driver"`
@@ -2507,6 +2704,13 @@ type Tool struct {
 	Extensions []ToolComponent `json:"extensions,omitempty,omitzero"`
 	// Properties Key/value pairs that provide additional information about the tool.
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
+}
+
+// NewTool returns an initialized Tool with the defaults defined by SARIF 2.1.0.
+func NewTool() Tool {
+	return Tool{
+		Extensions: []ToolComponent{},
+	}
 }
 
 func (v Tool) MarshalJSON() ([]byte, error) {
@@ -2523,8 +2727,7 @@ func (v Tool) MarshalJSON() ([]byte, error) {
 
 func (v *Tool) UnmarshalJSON(data []byte) error {
 	type alias Tool
-	var tmp alias
-	tmp.Extensions = []ToolComponent{}
+	tmp := alias(NewTool())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -2533,6 +2736,7 @@ func (v *Tool) UnmarshalJSON(data []byte) error {
 }
 
 // ToolComponent A component, such as a plug-in or the driver, of the analysis tool that was run.
+// Use NewToolComponent when constructing a value so schema defaults are initialized.
 type ToolComponent struct {
 	// AssociatedComponent The component which is strongly associated with this component. For a translation, this refers to the component which has been translated. For an extension, this is the driver that provides the extension's plugin model.
 	AssociatedComponent ToolComponentReference `json:"associatedComponent,omitempty,omitzero"`
@@ -2590,6 +2794,20 @@ type ToolComponent struct {
 	TranslationMetadata TranslationMetadata `json:"translationMetadata,omitempty,omitzero"`
 	// Version The tool component version, in whatever format the component natively provides.
 	Version string `json:"version,omitempty,omitzero"`
+}
+
+// NewToolComponent returns an initialized ToolComponent with the defaults defined by SARIF 2.1.0.
+func NewToolComponent() ToolComponent {
+	return ToolComponent{
+		Contents:            []string{"localizedData", "nonLocalizedData"},
+		IsComprehensive:     false,
+		Language:            "en-US",
+		Locations:           []ArtifactLocation{},
+		Notifications:       []ReportingDescriptor{},
+		Rules:               []ReportingDescriptor{},
+		SupportedTaxonomies: []ToolComponentReference{},
+		Taxa:                []ReportingDescriptor{},
+	}
 }
 
 func (v ToolComponent) MarshalJSON() ([]byte, error) {
@@ -2681,15 +2899,7 @@ func (v ToolComponent) MarshalJSON() ([]byte, error) {
 
 func (v *ToolComponent) UnmarshalJSON(data []byte) error {
 	type alias ToolComponent
-	var tmp alias
-	tmp.Contents = []string{"localizedData", "nonLocalizedData"}
-	tmp.IsComprehensive = false
-	tmp.Language = "en-US"
-	tmp.Locations = []ArtifactLocation{}
-	tmp.Notifications = []ReportingDescriptor{}
-	tmp.Rules = []ReportingDescriptor{}
-	tmp.SupportedTaxonomies = []ToolComponentReference{}
-	tmp.Taxa = []ReportingDescriptor{}
+	tmp := alias(NewToolComponent())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -2698,6 +2908,7 @@ func (v *ToolComponent) UnmarshalJSON(data []byte) error {
 }
 
 // ToolComponentReference Identifies a particular toolComponent object, either the driver or an extension.
+// Use NewToolComponentReference when constructing a value so schema defaults are initialized.
 type ToolComponentReference struct {
 	// GUID The 'guid' property of the referenced toolComponent.
 	GUID string `json:"guid,omitempty,omitzero"`
@@ -2707,6 +2918,13 @@ type ToolComponentReference struct {
 	Name string `json:"name,omitempty,omitzero"`
 	// Properties Key/value pairs that provide additional information about the toolComponentReference.
 	Properties PropertyBag `json:"properties,omitempty,omitzero"`
+}
+
+// NewToolComponentReference returns an initialized ToolComponentReference with the defaults defined by SARIF 2.1.0.
+func NewToolComponentReference() ToolComponentReference {
+	return ToolComponentReference{
+		Index: -1,
+	}
 }
 
 func (v ToolComponentReference) MarshalJSON() ([]byte, error) {
@@ -2728,8 +2946,7 @@ func (v ToolComponentReference) MarshalJSON() ([]byte, error) {
 
 func (v *ToolComponentReference) UnmarshalJSON(data []byte) error {
 	type alias ToolComponentReference
-	var tmp alias
-	tmp.Index = -1
+	tmp := alias(NewToolComponentReference())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -2822,6 +3039,7 @@ func (v VersionControlDetails) MarshalJSON() ([]byte, error) {
 }
 
 // WebRequest Describes an HTTP request.
+// Use NewWebRequest when constructing a value so schema defaults are initialized.
 type WebRequest struct {
 	// Body The body of the request.
 	Body ArtifactContent `json:"body,omitempty,omitzero"`
@@ -2841,6 +3059,13 @@ type WebRequest struct {
 	Target string `json:"target,omitempty,omitzero"`
 	// Version The request version. Example: '1.1'.
 	Version string `json:"version,omitempty,omitzero"`
+}
+
+// NewWebRequest returns an initialized WebRequest with the defaults defined by SARIF 2.1.0.
+func NewWebRequest() WebRequest {
+	return WebRequest{
+		Index: -1,
+	}
 }
 
 func (v WebRequest) MarshalJSON() ([]byte, error) {
@@ -2877,8 +3102,7 @@ func (v WebRequest) MarshalJSON() ([]byte, error) {
 
 func (v *WebRequest) UnmarshalJSON(data []byte) error {
 	type alias WebRequest
-	var tmp alias
-	tmp.Index = -1
+	tmp := alias(NewWebRequest())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
@@ -2887,6 +3111,7 @@ func (v *WebRequest) UnmarshalJSON(data []byte) error {
 }
 
 // WebResponse Describes the response to an HTTP request.
+// Use NewWebResponse when constructing a value so schema defaults are initialized.
 type WebResponse struct {
 	// Body The body of the response.
 	Body ArtifactContent `json:"body,omitempty,omitzero"`
@@ -2906,6 +3131,14 @@ type WebResponse struct {
 	StatusCode int `json:"statusCode,omitempty,omitzero"`
 	// Version The response version. Example: '1.1'.
 	Version string `json:"version,omitempty,omitzero"`
+}
+
+// NewWebResponse returns an initialized WebResponse with the defaults defined by SARIF 2.1.0.
+func NewWebResponse() WebResponse {
+	return WebResponse{
+		Index:              -1,
+		NoResponseReceived: false,
+	}
 }
 
 func (v WebResponse) MarshalJSON() ([]byte, error) {
@@ -2942,9 +3175,7 @@ func (v WebResponse) MarshalJSON() ([]byte, error) {
 
 func (v *WebResponse) UnmarshalJSON(data []byte) error {
 	type alias WebResponse
-	var tmp alias
-	tmp.Index = -1
-	tmp.NoResponseReceived = false
+	tmp := alias(NewWebResponse())
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
 	}
