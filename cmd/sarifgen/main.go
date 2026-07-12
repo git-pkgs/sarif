@@ -106,12 +106,16 @@ func generate(doc *schemaDocument) ([]byte, error) {
 }
 
 func writeType(b *bytes.Buffer, typeName string, description string, node *schemaNode) {
+	keys := orderedPropertyNames(node.Properties)
+	hasDefaults := len(defaultPropertyNames(keys, node.Properties)) > 0
 	writeComment(b, typeName, description)
+	if hasDefaults {
+		fmt.Fprintf(b, "// Use New%s when constructing a value so schema defaults are initialized.\n", typeName)
+	}
 	b.WriteString("type ")
 	b.WriteString(typeName)
 	b.WriteString(" struct {\n")
 
-	keys := orderedPropertyNames(node.Properties)
 	required := requiredSet(node.Required)
 	for _, jsonName := range keys {
 		prop := node.Properties[jsonName]
@@ -126,8 +130,25 @@ func writeType(b *bytes.Buffer, typeName string, description string, node *schem
 	}
 	b.WriteString("}\n\n")
 
+	writeConstructor(b, typeName, keys, node.Properties)
 	writeMarshalJSON(b, typeName, keys, node.Properties, required)
 	writeUnmarshalJSON(b, typeName, keys, node.Properties)
+}
+
+func writeConstructor(b *bytes.Buffer, typeName string, keys []string, properties map[string]*schemaNode) {
+	defaults := defaultPropertyNames(keys, properties)
+	if len(defaults) == 0 {
+		return
+	}
+
+	fmt.Fprintf(b, "// New%s returns an initialized %s with the defaults defined by SARIF 2.1.0.\n", typeName, typeName)
+	fmt.Fprintf(b, "func New%s() %s {\n", typeName, typeName)
+	fmt.Fprintf(b, "\treturn %s{\n", typeName)
+	for _, jsonName := range defaults {
+		fmt.Fprintf(b, "\t\t%s: %s,\n", goFieldName(jsonName), defaultLiteral(properties[jsonName]))
+	}
+	b.WriteString("\t}\n")
+	b.WriteString("}\n\n")
 }
 
 func writeMarshalJSON(b *bytes.Buffer, typeName string, keys []string, properties map[string]*schemaNode, required map[string]bool) {
@@ -153,28 +174,30 @@ func writeMarshalJSON(b *bytes.Buffer, typeName string, keys []string, propertie
 }
 
 func writeUnmarshalJSON(b *bytes.Buffer, typeName string, keys []string, properties map[string]*schemaNode) {
-	defaults := make([]string, 0)
-	for _, jsonName := range keys {
-		if hasDefault(properties[jsonName]) {
-			defaults = append(defaults, jsonName)
-		}
-	}
+	defaults := defaultPropertyNames(keys, properties)
 	if len(defaults) == 0 {
 		return
 	}
 
 	fmt.Fprintf(b, "func (v *%s) UnmarshalJSON(data []byte) error {\n", typeName)
 	fmt.Fprintf(b, "\ttype alias %s\n", typeName)
-	b.WriteString("\tvar tmp alias\n")
-	for _, jsonName := range defaults {
-		fmt.Fprintf(b, "\ttmp.%s = %s\n", goFieldName(jsonName), defaultLiteral(properties[jsonName]))
-	}
+	fmt.Fprintf(b, "\ttmp := alias(New%s())\n", typeName)
 	b.WriteString("\tif err := json.Unmarshal(data, &tmp); err != nil {\n")
 	b.WriteString("\t\treturn err\n")
 	b.WriteString("\t}\n")
 	fmt.Fprintf(b, "\t*v = %s(tmp)\n", typeName)
 	b.WriteString("\treturn nil\n")
 	b.WriteString("}\n\n")
+}
+
+func defaultPropertyNames(keys []string, properties map[string]*schemaNode) []string {
+	defaults := make([]string, 0)
+	for _, jsonName := range keys {
+		if hasDefault(properties[jsonName]) {
+			defaults = append(defaults, jsonName)
+		}
+	}
+	return defaults
 }
 
 func hasDefault(node *schemaNode) bool {
@@ -192,7 +215,7 @@ func defaultLiteral(node *schemaNode) string {
 		if schemaType(node) == "integer" {
 			return fmt.Sprintf("%d", int(value))
 		}
-		return fmt.Sprintf("%#v", value)
+		return fmt.Sprintf("float64(%#v)", value)
 	case string:
 		return fmt.Sprintf("%q", value)
 	case []any:

@@ -13,9 +13,33 @@ go get github.com/git-pkgs/sarif
 ## Usage
 
 ```go
-import "github.com/git-pkgs/sarif"
+import (
+    "log"
+    "os"
 
-log := &sarif.Log{
+    "github.com/git-pkgs/sarif"
+)
+
+artifactLocation := sarif.NewArtifactLocation()
+artifactLocation.URI = "src/main.go"
+
+region := sarif.NewRegion()
+region.StartLine = 10
+region.StartColumn = 5
+
+location := sarif.NewLocation()
+location.PhysicalLocation = sarif.PhysicalLocation{
+    ArtifactLocation: artifactLocation,
+    Region:           region,
+}
+
+result := sarif.NewResult()
+result.RuleID = "no-unused-vars"
+result.Level = "warning"
+result.Message = sarif.Message{Text: "Variable 'x' is unused"}
+result.Locations = []sarif.Location{location}
+
+report := &sarif.Log{
     Version: "2.1.0",
     Runs: []sarif.Run{
         {
@@ -25,33 +49,19 @@ log := &sarif.Log{
                     Version: "1.0.0",
                 },
             },
-            Results: []sarif.Result{
-                {
-                    RuleID: "no-unused-vars",
-                    Level:  "warning",
-                    Message: sarif.Message{
-                        Text: "Variable 'x' is unused",
-                    },
-                    Locations: []sarif.Location{
-                        {
-                            PhysicalLocation: sarif.PhysicalLocation{
-                                ArtifactLocation: sarif.ArtifactLocation{URI: "src/main.go"},
-                                Region:           sarif.Region{StartLine: 10, StartColumn: 5},
-                            },
-                        },
-                    },
-                },
-            },
+            Results: []sarif.Result{result},
         },
     },
 }
 
-if err := sarif.Validate(log); err != nil {
+if err := sarif.Validate(report); err != nil {
     log.Fatal(err)
 }
 
-sarif.Dump(log, os.Stdout, true)
+sarif.Dump(report, os.Stdout, true)
 ```
+
+Use the generated `New<Type>` constructors for types that define schema defaults. They initialize sentinel values such as `-1`, preventing unset indexes and offsets from being serialized as meaningful zeroes. Constructors are listed in the generated API documentation for each applicable type.
 
 ## Parsing
 
