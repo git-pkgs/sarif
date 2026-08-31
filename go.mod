@@ -1,6 +1,8 @@
 module github.com/git-pkgs/sarif
 
-go 1.25.6
+go 1.26
+
+toolchain go1.26.7
 
 require github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 
