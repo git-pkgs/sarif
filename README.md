@@ -102,4 +102,4 @@ The generator lives in `cmd/sarifgen` and writes `types_gen.go`.
 
 ## License
 
-MIT
+[MIT](LICENSE).
