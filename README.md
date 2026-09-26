@@ -84,6 +84,8 @@ for _, run := range log.Runs {
 
 `Validate` checks a `*sarif.Log` against the bundled SARIF 2.1.0 JSON schema using `github.com/santhosh-tekuri/jsonschema/v6`.
 
+Under TinyGo, parsing, writing, and generated defaults remain available. Schema validation is unsupported: `Validate` returns `errors.ErrUnsupported`, `Valid` returns false, and `Schema` is unavailable.
+
 ```go
 if sarif.Valid(log) {
     // log is valid SARIF 2.1.0
