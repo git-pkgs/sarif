@@ -22,6 +22,14 @@ func TestInspectSummarizesRunsAndResults(t *testing.T) {
       },
       "extensions": [{"name": "security-extended", "version": "1.2"}]
     },
+    "taxonomies": [{
+      "name": "CWE",
+      "guid": "33333333-3333-4333-8333-333333333333",
+      "taxa": [{
+        "id": "79",
+        "guid": "44444444-4444-4444-8444-444444444444"
+      }]
+    }],
     "results": [{
       "ruleId": "js/xss",
       "level": "error",
@@ -29,7 +37,13 @@ func TestInspectSummarizesRunsAndResults(t *testing.T) {
       "occurrenceCount": 2,
       "message": {"text": "finding"},
       "suppressions": [{"kind": "inSource", "state": "accepted"}],
-      "taxa": [{"id": "CWE-79"}]
+      "taxa": [{
+        "id": "79",
+        "toolComponent": {
+          "name": "CWE",
+          "guid": "33333333-3333-4333-8333-333333333333"
+        }
+      }]
     }, {
       "ruleIndex": 1,
       "message": {"text": "uses default warning level"}
@@ -60,8 +74,47 @@ func TestInspectSummarizesRunsAndResults(t *testing.T) {
 	assertCounts(t, got.Levels, map[string]int{"error": 1, "warning": 1})
 	assertCounts(t, got.BaselineStates, map[string]int{"new": 1})
 	assertCounts(t, got.Rules, map[string]int{"js/sql-injection": 1, "js/xss": 1})
-	assertCounts(t, got.Taxa, map[string]int{"CWE-79": 1})
+	assertTaxa(t, got.Taxa, []summary.Taxon{{
+		ID:           "79",
+		GUID:         "44444444-4444-4444-8444-444444444444",
+		TaxonomyName: "CWE",
+		TaxonomyGUID: "33333333-3333-4333-8333-333333333333",
+		Count:        1,
+	}})
 	assertCounts(t, got.Suppressions, map[string]int{"inSource/accepted": 1})
+}
+
+func TestInspectResolvesIndexedTaxaAndPreservesTaxonomy(t *testing.T) {
+	input := `{
+  "version": "2.1.0",
+  "runs": [{
+    "results": [{
+      "ruleId": "custom-rule",
+      "message": {"text": "finding"},
+      "taxa": [{"index": 0}]
+    }],
+    "tool": {"driver": {
+      "name": "custom-scanner",
+      "guid": "11111111-1111-4111-8111-111111111111",
+      "taxa": [{
+        "id": "79",
+        "guid": "22222222-2222-4222-8222-222222222222"
+      }]
+    }}
+  }]
+}`
+
+	got, err := summary.Inspect(strings.NewReader(input), summary.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTaxa(t, got.Taxa, []summary.Taxon{{
+		ID:           "79",
+		GUID:         "22222222-2222-4222-8222-222222222222",
+		TaxonomyName: "custom-scanner",
+		TaxonomyGUID: "11111111-1111-4111-8111-111111111111",
+		Count:        1,
+	}})
 }
 
 func TestInspectResolvesRuleIndexesWhenResultsPrecedeTool(t *testing.T) {
@@ -206,10 +259,10 @@ func TestInspectBoundsUniqueValuesAndTools(t *testing.T) {
     "tool": {"driver": {"name": "driver", "rules": [
       {"id": "one", "defaultConfiguration": {"level": "error"}},
       {"id": "two", "defaultConfiguration": {"level": "warning"}}
-    ]}, "extensions": [{"name": "one"}, {"name": "two"}]},
+    ], "taxa": [{"id": "one"}, {"id": "two"}]}, "extensions": [{"name": "one"}, {"name": "two"}]},
     "results": [
-      {"ruleIndex": 0, "message": {"text": "one"}},
-      {"ruleIndex": 1, "message": {"text": "two"}}
+      {"ruleIndex": 0, "message": {"text": "one"}, "taxa": [{"index": 0}]},
+      {"ruleIndex": 1, "message": {"text": "two"}, "taxa": [{"index": 1}]}
     ]
   }]
 }`
@@ -217,7 +270,8 @@ func TestInspectBoundsUniqueValuesAndTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.Truncated || len(got.Tools) != 1 || len(got.Rules) != 1 || len(got.Levels) != 1 {
+	if !got.Truncated || len(got.Tools) != 1 || len(got.Rules) != 1 ||
+		len(got.Levels) != 1 || len(got.Taxa) != 1 {
 		t.Fatalf("bounded summary = %#v", got)
 	}
 }
@@ -301,6 +355,18 @@ func assertCounts(t *testing.T, got, want map[string]int) {
 	for name, count := range want {
 		if got[name] != count {
 			t.Errorf("count %q = %d, want %d", name, got[name], count)
+		}
+	}
+}
+
+func assertTaxa(t *testing.T, got, want []summary.Taxon) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("taxa = %#v, want %#v", got, want)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Errorf("taxon %d = %#v, want %#v", index, got[index], want[index])
 		}
 	}
 }
