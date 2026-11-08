@@ -920,8 +920,13 @@ func resolveImplicitResultTaxa(
 		explicitCounts[ruleTaxonIdentity{Rule: ruleID, Taxon: taxon}] += count
 	}
 	for ruleID, count := range ruleCounts {
+		seen := make(map[taxonIdentity]bool)
 		for _, reference := range rules[ruleID].ImplicitTaxa {
 			taxon := resolveTaxonIdentity(components, taxonomies, reference)
+			if seen[taxon] {
+				continue
+			}
+			seen[taxon] = true
 			explicit := explicitCounts[ruleTaxonIdentity{Rule: ruleID, Taxon: taxon}]
 			missing := count - min(count, explicit)
 			if missing > 0 {

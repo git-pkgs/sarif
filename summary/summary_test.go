@@ -160,10 +160,16 @@ func TestInspectIncludesTaxaImpliedByRuleRelationships(t *testing.T) {
         }, {
           "target": {"id": "89", "toolComponent": {"name": "CWE"}},
           "kinds": ["equal"]
+        }, {
+          "target": {"guid": "11111111-1111-4111-8111-111111111111", "toolComponent": {"name": "CWE"}},
+          "kinds": ["equal"]
         }]
       }]
     }},
-    "taxonomies": [{"name": "CWE", "taxa": [{"id": "79"}, {"id": "89"}]}]
+    "taxonomies": [{"name": "CWE", "taxa": [
+      {"id": "79", "guid": "11111111-1111-4111-8111-111111111111"},
+      {"id": "89"}
+    ]}]
   }]
 }`
 
@@ -172,7 +178,7 @@ func TestInspectIncludesTaxaImpliedByRuleRelationships(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertTaxa(t, got.Taxa, []summary.Taxon{
-		{ID: "79", TaxonomyName: "CWE", Count: 2},
+		{ID: "79", GUID: "11111111-1111-4111-8111-111111111111", TaxonomyName: "CWE", Count: 2},
 		{ID: "89", TaxonomyName: "CWE", Count: 2},
 	})
 }
