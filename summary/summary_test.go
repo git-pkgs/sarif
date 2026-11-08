@@ -115,6 +115,29 @@ func TestInspectResolvesEffectiveLevels(t *testing.T) {
 	})
 }
 
+func TestInspectResolvesReportingDescriptorReferences(t *testing.T) {
+	input := `{
+  "version": "2.1.0",
+  "runs": [{
+    "tool": {"driver": {"name": "scanner", "rules": [
+      {"id": "by-id", "defaultConfiguration": {"level": "error"}},
+      {"id": "by-index", "defaultConfiguration": {"level": "note"}}
+    ]}},
+    "results": [
+      {"rule": {"id": "by-id"}, "message": {"text": "id"}},
+      {"rule": {"index": 1}, "message": {"text": "index"}}
+    ]
+  }]
+}`
+
+	got, err := summary.Inspect(strings.NewReader(input), summary.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCounts(t, got.Rules, map[string]int{"by-id": 1, "by-index": 1})
+	assertCounts(t, got.Levels, map[string]int{"error": 1, "note": 1})
+}
+
 func TestInspectCountsEffectiveSuppressions(t *testing.T) {
 	input := `{
   "version": "2.1.0",
@@ -165,6 +188,24 @@ func TestInspectBoundsUniqueValuesAndTools(t *testing.T) {
 	}
 	if !got.Truncated || len(got.Tools) != 1 || len(got.Rules) != 1 || len(got.Levels) != 1 {
 		t.Fatalf("bounded summary = %#v", got)
+	}
+}
+
+func TestInspectDeduplicatesToolsAtLimit(t *testing.T) {
+	input := `{
+  "version": "2.1.0",
+  "runs": [{
+    "tool": {"driver": {"name": "scanner"}, "extensions": [
+      {"name": "scanner"}, {"name": "scanner"}
+    ]}
+  }]
+}`
+	got, err := summary.Inspect(strings.NewReader(input), summary.Options{MaxTools: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Truncated || len(got.Tools) != 1 {
+		t.Fatalf("tools = %#v, truncated = %t", got.Tools, got.Truncated)
 	}
 }
 

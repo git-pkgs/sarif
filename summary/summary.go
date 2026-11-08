@@ -63,6 +63,7 @@ type Summary struct {
 	Taxa              map[string]int
 	Suppressions      map[string]int
 	Truncated         bool
+	toolSet           map[Tool]struct{}
 }
 
 func Inspect(reader io.Reader, options Options) (Summary, error) {
@@ -99,6 +100,7 @@ func finishSummary(summary Summary) Summary {
 		}
 		return strings.Compare(left.Version, right.Version)
 	})
+	summary.toolSet = nil
 	return summary
 }
 
@@ -136,6 +138,7 @@ func newSummary() Summary {
 		Rules:          make(map[string]int),
 		Taxa:           make(map[string]int),
 		Suppressions:   make(map[string]int),
+		toolSet:        make(map[Tool]struct{}),
 	}
 }
 
@@ -341,10 +344,14 @@ func inspectResults(
 	}
 	for decoder.More() {
 		var result struct {
-			Kind            string        `json:"kind"`
-			Level           string        `json:"level"`
-			RuleID          string        `json:"ruleId"`
-			RuleIndex       *int          `json:"ruleIndex"`
+			Kind      string `json:"kind"`
+			Level     string `json:"level"`
+			RuleID    string `json:"ruleId"`
+			RuleIndex *int   `json:"ruleIndex"`
+			Rule      struct {
+				ID    string `json:"id"`
+				Index *int   `json:"index"`
+			} `json:"rule"`
 			BaselineState   string        `json:"baselineState"`
 			OccurrenceCount int           `json:"occurrenceCount"`
 			Suppressions    []suppression `json:"suppressions"`
@@ -359,15 +366,23 @@ func inspectResults(
 		summary.Results++
 		occurrences := max(1, result.OccurrenceCount)
 		summary.Occurrences += occurrences
+		ruleID := result.RuleID
+		if ruleID == "" {
+			ruleID = result.Rule.ID
+		}
+		ruleIndex := result.RuleIndex
+		if ruleIndex == nil {
+			ruleIndex = result.Rule.Index
+		}
 		switch {
 		case result.Kind != "" && result.Kind != "fail":
 			addCount(summary.Levels, "none", 1, options.MaxUniqueValues, &summary.Truncated)
 		case result.Level != "":
 			addCount(summary.Levels, result.Level, 1, options.MaxUniqueValues, &summary.Truncated)
 		default:
-			reference := ruleReference{ID: result.RuleID}
-			if result.RuleIndex != nil {
-				reference.Index = *result.RuleIndex
+			reference := ruleReference{ID: ruleID}
+			if ruleIndex != nil {
+				reference.Index = *ruleIndex
 				reference.HasIndex = true
 			}
 			addRuleReferenceCount(pendingLevels, reference, options.MaxUniqueValues, &summary.Truncated)
@@ -376,10 +391,10 @@ func inspectResults(
 			addCount(summary.BaselineStates, result.BaselineState, 1, options.MaxUniqueValues, &summary.Truncated)
 		}
 		switch {
-		case result.RuleID != "":
-			addCount(summary.Rules, result.RuleID, 1, options.MaxUniqueValues, &summary.Truncated)
-		case result.RuleIndex != nil:
-			addIndexCount(indexedRules, *result.RuleIndex, options.MaxUniqueValues, &summary.Truncated)
+		case ruleID != "":
+			addCount(summary.Rules, ruleID, 1, options.MaxUniqueValues, &summary.Truncated)
+		case ruleIndex != nil:
+			addIndexCount(indexedRules, *ruleIndex, options.MaxUniqueValues, &summary.Truncated)
 		default:
 			addCount(summary.Rules, "<unresolved>", 1, options.MaxUniqueValues, &summary.Truncated)
 		}
@@ -471,15 +486,14 @@ func addTool(summary *Summary, tool Tool, limit int) {
 	if tool.Name == "" {
 		return
 	}
-	for _, current := range summary.Tools {
-		if current == tool {
-			return
-		}
+	if _, exists := summary.toolSet[tool]; exists {
+		return
 	}
 	if len(summary.Tools) >= limit {
 		summary.Truncated = true
 		return
 	}
+	summary.toolSet[tool] = struct{}{}
 	summary.Tools = append(summary.Tools, tool)
 }
 
