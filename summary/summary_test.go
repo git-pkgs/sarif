@@ -245,6 +245,9 @@ func TestInspectAppliesInvocationRuleLevelOverrides(t *testing.T) {
       "ruleConfigurationOverrides": [{
         "descriptor": {"index": 0},
         "configuration": {"level": "error"}
+      }, {
+        "descriptor": {"id": "RULE-1"},
+        "configuration": {"level": "warning"}
       }]
     }],
     "tool": {"driver": {"name": "scanner", "rules": [{

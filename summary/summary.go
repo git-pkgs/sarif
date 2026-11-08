@@ -855,13 +855,14 @@ func resolveResultLevels(
 	pending map[levelReference]int,
 	limit int,
 ) {
+	overrides := resolveInvocationRuleLevels(components, invocations)
 	for reference, count := range pending {
-		rule, _ := resolveRule(components, reference.Rule)
+		rule, identity, found := resolveRuleIdentity(components, reference.Rule)
 		level := rule.Level
-		if override, found := invocationRuleLevel(
-			components, invocations, reference.InvocationIndex, reference.Rule,
-		); found {
-			level = override
+		if found && reference.InvocationIndex >= 0 && reference.InvocationIndex < len(overrides) {
+			if override, overridden := overrides[reference.InvocationIndex][identity]; overridden {
+				level = override
+			}
 		}
 		if level == "" {
 			level = "warning"
@@ -870,26 +871,24 @@ func resolveResultLevels(
 	}
 }
 
-func invocationRuleLevel(
+func resolveInvocationRuleLevels(
 	components ruleComponents,
 	invocations [][]ruleOverride,
-	invocationIndex int,
-	reference ruleReference,
-) (string, bool) {
-	if invocationIndex < 0 || invocationIndex >= len(invocations) {
-		return "", false
-	}
-	_, identity, found := resolveRuleIdentity(components, reference)
-	if !found {
-		return "", false
-	}
-	for _, override := range invocations[invocationIndex] {
-		_, overrideIdentity, resolved := resolveRuleIdentity(components, override.Rule)
-		if resolved && overrideIdentity == identity {
-			return override.Level, true
+) []map[ruleIdentity]string {
+	levels := make([]map[ruleIdentity]string, len(invocations))
+	for invocationIndex, invocation := range invocations {
+		levels[invocationIndex] = make(map[ruleIdentity]string)
+		for _, override := range invocation {
+			_, identity, found := resolveRuleIdentity(components, override.Rule)
+			if !found {
+				continue
+			}
+			if _, exists := levels[invocationIndex][identity]; !exists {
+				levels[invocationIndex][identity] = override.Level
+			}
 		}
 	}
-	return "", false
+	return levels
 }
 
 func resolveImplicitResultTaxa(
