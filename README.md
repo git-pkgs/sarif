@@ -119,10 +119,11 @@ fmt.Println(result.Tools, result.Levels, result.Rules)
 
 The summary includes runs, results, occurrence counts, tools, effective result
 levels, baseline states, rules, taxa, and suppressions. Level resolution uses
-non-failing result kinds, explicit result levels, and rule defaults referenced
-by index or ID. Taxa retain their descriptor ID and GUID, taxonomy name and
-GUID, and occurrence count. `Truncated` is true when a value or tool limit was
-reached.
+non-failing result kinds, explicit result levels, invocation overrides, and rule
+defaults referenced by index or ID. Taxa include explicit result references and
+`equal` or `superset` rule relationships, retaining their descriptor ID and
+GUID, taxonomy name and GUID, and occurrence count. `Truncated` is true when a
+value or tool limit was reached.
 
 ## Regenerating Types
 
