@@ -138,6 +138,37 @@ func TestInspectResolvesReportingDescriptorReferences(t *testing.T) {
 	assertCounts(t, got.Levels, map[string]int{"error": 1, "note": 1})
 }
 
+func TestInspectResolvesExtensionRuleReferences(t *testing.T) {
+	input := `{
+  "version": "2.1.0",
+  "runs": [{
+    "tool": {
+      "driver": {"name": "scanner"},
+      "extensions": [{
+        "name": "plugin",
+        "guid": "11111111-1111-4111-8111-111111111111",
+        "rules": [
+          {"id": "ext-error", "guid": "22222222-2222-4222-8222-222222222222", "defaultConfiguration": {"level": "error"}},
+          {"id": "ext-note", "defaultConfiguration": {"level": "note"}}
+        ]
+      }]
+    },
+    "results": [
+      {"rule": {"index": 0, "toolComponent": {"index": 0}}, "message": {"text": "index"}},
+      {"rule": {"id": "ext-note", "toolComponent": {"name": "plugin"}}, "message": {"text": "name"}},
+      {"rule": {"guid": "22222222-2222-4222-8222-222222222222", "toolComponent": {"guid": "11111111-1111-4111-8111-111111111111"}}, "message": {"text": "guid"}}
+    ]
+  }]
+}`
+
+	got, err := summary.Inspect(strings.NewReader(input), summary.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCounts(t, got.Rules, map[string]int{"ext-error": 2, "ext-note": 1})
+	assertCounts(t, got.Levels, map[string]int{"error": 2, "note": 1})
+}
+
 func TestInspectCountsEffectiveSuppressions(t *testing.T) {
 	input := `{
   "version": "2.1.0",
@@ -196,7 +227,7 @@ func TestInspectDeduplicatesToolsAtLimit(t *testing.T) {
   "version": "2.1.0",
   "runs": [{
     "tool": {"driver": {"name": "scanner"}, "extensions": [
-      {"name": "scanner"}, {"name": "scanner"}
+      {"name": "scanner"}
     ]}
   }]
 }`
@@ -207,6 +238,28 @@ func TestInspectDeduplicatesToolsAtLimit(t *testing.T) {
 	if got.Truncated || len(got.Tools) != 1 {
 		t.Fatalf("tools = %#v, truncated = %t", got.Tools, got.Truncated)
 	}
+}
+
+func TestInspectBoundsExtensionRuleMetadata(t *testing.T) {
+	input := `{
+  "version": "2.1.0",
+  "runs": [{
+    "tool": {"driver": {"name": "scanner"}, "extensions": [
+      {"name": "one", "rules": [{"id": "one", "defaultConfiguration": {"level": "error"}}]},
+      {"name": "two", "rules": [{"id": "two", "defaultConfiguration": {"level": "error"}}]}
+    ]},
+    "results": [{"rule": {"index": 0, "toolComponent": {"index": 1}}, "message": {"text": "two"}}]
+  }]
+}`
+	got, err := summary.Inspect(strings.NewReader(input), summary.Options{MaxTools: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Truncated {
+		t.Fatal("summary was not truncated")
+	}
+	assertCounts(t, got.Rules, map[string]int{"<unresolved>": 1})
+	assertCounts(t, got.Levels, map[string]int{"warning": 1})
 }
 
 func TestInspectEnforcesInputLimit(t *testing.T) {

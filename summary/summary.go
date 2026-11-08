@@ -35,19 +35,51 @@ type Tool struct {
 
 type ruleDefinition struct {
 	ID    string
+	GUID  string
 	Level string
 }
 
-type ruleReference struct {
-	ID       string
+type ruleComponent struct {
+	tool  Tool
+	GUID  string
+	Rules []ruleDefinition
+}
+
+type ruleComponents struct {
+	Driver     ruleComponent
+	Extensions []ruleComponent
+}
+
+type componentReference struct {
+	Name     string
+	GUID     string
 	Index    int
 	HasIndex bool
+}
+
+type ruleReference struct {
+	ID        string
+	GUID      string
+	Index     int
+	HasIndex  bool
+	Component componentReference
 }
 
 type suppression struct {
 	Kind   string `json:"kind"`
 	Status string `json:"status"`
 	State  string `json:"state"`
+}
+
+type resultRule struct {
+	ID            string `json:"id"`
+	GUID          string `json:"guid"`
+	Index         *int   `json:"index"`
+	ToolComponent struct {
+		Name  string `json:"name"`
+		GUID  string `json:"guid"`
+		Index *int   `json:"index"`
+	} `json:"toolComponent"`
 }
 
 type Summary struct {
@@ -194,8 +226,8 @@ func inspectRun(decoder *json.Decoder, summary *Summary, options Options) error 
 	if err := expectDelimiter(decoder, '{'); err != nil {
 		return err
 	}
-	var driverRules []ruleDefinition
-	indexedRules := make(map[int]int)
+	var components ruleComponents
+	pendingRules := make(map[ruleReference]int)
 	pendingLevels := make(map[ruleReference]int)
 	for decoder.More() {
 		name, err := objectName(decoder)
@@ -204,9 +236,9 @@ func inspectRun(decoder *json.Decoder, summary *Summary, options Options) error 
 		}
 		switch name {
 		case "tool":
-			driverRules, err = inspectTool(decoder, summary, options)
+			components, err = inspectTool(decoder, summary, options)
 		case "results":
-			err = inspectResults(decoder, summary, indexedRules, pendingLevels, options)
+			err = inspectResults(decoder, summary, pendingRules, pendingLevels, options)
 		default:
 			err = skipValue(decoder)
 		}
@@ -217,95 +249,108 @@ func inspectRun(decoder *json.Decoder, summary *Summary, options Options) error 
 	if err := expectDelimiter(decoder, '}'); err != nil {
 		return err
 	}
-	for index, count := range indexedRules {
-		if index >= 0 && index < len(driverRules) && driverRules[index].ID != "" {
-			addCount(summary.Rules, driverRules[index].ID, count, options.MaxUniqueValues, &summary.Truncated)
-		} else {
-			addCount(summary.Rules, "<unresolved>", count, options.MaxUniqueValues, &summary.Truncated)
-		}
-	}
-	resolveResultLevels(summary, driverRules, pendingLevels, options.MaxUniqueValues)
+	resolveResultRules(summary, components, pendingRules, options.MaxUniqueValues)
+	resolveResultLevels(summary, components, pendingLevels, options.MaxUniqueValues)
 	return nil
 }
 
-func inspectTool(decoder *json.Decoder, summary *Summary, options Options) ([]ruleDefinition, error) {
+func inspectTool(decoder *json.Decoder, summary *Summary, options Options) (ruleComponents, error) {
 	if err := expectDelimiter(decoder, '{'); err != nil {
-		return nil, err
+		return ruleComponents{}, err
 	}
-	var driverRules []ruleDefinition
+	var components ruleComponents
+	remainingRules := options.MaxUniqueValues
 	for decoder.More() {
 		name, err := objectName(decoder)
 		if err != nil {
-			return nil, err
+			return ruleComponents{}, err
 		}
 		switch name {
 		case "driver":
-			var tool Tool
-			tool, driverRules, err = inspectToolComponent(decoder, true, options.MaxUniqueValues, &summary.Truncated)
-			addTool(summary, tool, options.MaxTools)
+			components.Driver, err = inspectToolComponent(decoder, remainingRules, &summary.Truncated)
+			remainingRules -= len(components.Driver.Rules)
+			addTool(summary, components.Driver.tool, options.MaxTools)
 		case "extensions":
-			err = inspectToolExtensions(decoder, summary, options.MaxTools)
+			components.Extensions, err = inspectToolExtensions(
+				decoder, summary, options.MaxTools, &remainingRules, &summary.Truncated,
+			)
 		default:
 			err = skipValue(decoder)
 		}
 		if err != nil {
-			return nil, err
+			return ruleComponents{}, err
 		}
 	}
-	return driverRules, expectDelimiter(decoder, '}')
+	return components, expectDelimiter(decoder, '}')
 }
 
-func inspectToolExtensions(decoder *json.Decoder, summary *Summary, limit int) error {
+func inspectToolExtensions(
+	decoder *json.Decoder,
+	summary *Summary,
+	toolLimit int,
+	remainingRules *int,
+	truncated *bool,
+) ([]ruleComponent, error) {
 	if err := expectDelimiter(decoder, '['); err != nil {
-		return err
+		return nil, err
 	}
+	var components []ruleComponent
 	for decoder.More() {
-		tool, _, err := inspectToolComponent(decoder, false, 0, nil)
-		if err != nil {
-			return err
+		retain := len(components) < toolLimit
+		maxRules := 0
+		if retain {
+			maxRules = *remainingRules
 		}
-		addTool(summary, tool, limit)
+		component, err := inspectToolComponent(decoder, maxRules, truncated)
+		if err != nil {
+			return nil, err
+		}
+		if retain {
+			*remainingRules -= len(component.Rules)
+			components = append(components, component)
+		} else {
+			*truncated = true
+		}
+		addTool(summary, component.tool, toolLimit)
 	}
-	return expectDelimiter(decoder, ']')
+	return components, expectDelimiter(decoder, ']')
 }
 
 func inspectToolComponent(
 	decoder *json.Decoder,
-	rules bool,
 	maxRules int,
 	truncated *bool,
-) (Tool, []ruleDefinition, error) {
+) (ruleComponent, error) {
 	if err := expectDelimiter(decoder, '{'); err != nil {
-		return Tool{}, nil, err
+		return ruleComponent{}, err
 	}
+	var component ruleComponent
 	var tool Tool
-	var ruleDefinitions []ruleDefinition
 	for decoder.More() {
 		name, err := objectName(decoder)
 		if err != nil {
-			return Tool{}, nil, err
+			return ruleComponent{}, err
 		}
 		switch name {
 		case "name":
 			err = decoder.Decode(&tool.Name)
+		case "guid":
+			err = decoder.Decode(&component.GUID)
 		case "version":
 			err = decoder.Decode(&tool.Version)
 		case "semanticVersion":
 			err = decoder.Decode(&tool.SemanticVersion)
 		case "rules":
-			if rules {
-				ruleDefinitions, err = inspectRuleDefinitions(decoder, maxRules, truncated)
-			} else {
-				err = skipValue(decoder)
-			}
+			component.Rules, err = inspectRuleDefinitions(decoder, maxRules, truncated)
 		default:
 			err = skipValue(decoder)
 		}
 		if err != nil {
-			return Tool{}, nil, err
+			return ruleComponent{}, err
 		}
 	}
-	return tool, ruleDefinitions, expectDelimiter(decoder, '}')
+	component.tool = tool
+	return component, expectDelimiter(decoder, '}')
 }
 
 func inspectRuleDefinitions(decoder *json.Decoder, limit int, truncated *bool) ([]ruleDefinition, error) {
@@ -316,6 +361,7 @@ func inspectRuleDefinitions(decoder *json.Decoder, limit int, truncated *bool) (
 	for decoder.More() {
 		var rule struct {
 			ID                   string `json:"id"`
+			GUID                 string `json:"guid"`
 			DefaultConfiguration struct {
 				Level string `json:"level"`
 			} `json:"defaultConfiguration"`
@@ -324,7 +370,9 @@ func inspectRuleDefinitions(decoder *json.Decoder, limit int, truncated *bool) (
 			return nil, err
 		}
 		if len(definitions) < limit {
-			definitions = append(definitions, ruleDefinition{ID: rule.ID, Level: rule.DefaultConfiguration.Level})
+			definitions = append(definitions, ruleDefinition{
+				ID: rule.ID, GUID: rule.GUID, Level: rule.DefaultConfiguration.Level,
+			})
 		} else if truncated != nil {
 			*truncated = true
 		}
@@ -335,7 +383,7 @@ func inspectRuleDefinitions(decoder *json.Decoder, limit int, truncated *bool) (
 func inspectResults(
 	decoder *json.Decoder,
 	summary *Summary,
-	indexedRules map[int]int,
+	pendingRules map[ruleReference]int,
 	pendingLevels map[ruleReference]int,
 	options Options,
 ) error {
@@ -344,14 +392,11 @@ func inspectResults(
 	}
 	for decoder.More() {
 		var result struct {
-			Kind      string `json:"kind"`
-			Level     string `json:"level"`
-			RuleID    string `json:"ruleId"`
-			RuleIndex *int   `json:"ruleIndex"`
-			Rule      struct {
-				ID    string `json:"id"`
-				Index *int   `json:"index"`
-			} `json:"rule"`
+			Kind            string        `json:"kind"`
+			Level           string        `json:"level"`
+			RuleID          string        `json:"ruleId"`
+			RuleIndex       *int          `json:"ruleIndex"`
+			Rule            resultRule    `json:"rule"`
 			BaselineState   string        `json:"baselineState"`
 			OccurrenceCount int           `json:"occurrenceCount"`
 			Suppressions    []suppression `json:"suppressions"`
@@ -366,35 +411,23 @@ func inspectResults(
 		summary.Results++
 		occurrences := max(1, result.OccurrenceCount)
 		summary.Occurrences += occurrences
-		ruleID := result.RuleID
-		if ruleID == "" {
-			ruleID = result.Rule.ID
-		}
-		ruleIndex := result.RuleIndex
-		if ruleIndex == nil {
-			ruleIndex = result.Rule.Index
-		}
+		reference := makeRuleReference(result.RuleID, result.RuleIndex, result.Rule)
 		switch {
 		case result.Kind != "" && result.Kind != "fail":
 			addCount(summary.Levels, "none", 1, options.MaxUniqueValues, &summary.Truncated)
 		case result.Level != "":
 			addCount(summary.Levels, result.Level, 1, options.MaxUniqueValues, &summary.Truncated)
 		default:
-			reference := ruleReference{ID: ruleID}
-			if ruleIndex != nil {
-				reference.Index = *ruleIndex
-				reference.HasIndex = true
-			}
 			addRuleReferenceCount(pendingLevels, reference, options.MaxUniqueValues, &summary.Truncated)
 		}
 		if result.BaselineState != "" {
 			addCount(summary.BaselineStates, result.BaselineState, 1, options.MaxUniqueValues, &summary.Truncated)
 		}
 		switch {
-		case ruleID != "":
-			addCount(summary.Rules, ruleID, 1, options.MaxUniqueValues, &summary.Truncated)
-		case ruleIndex != nil:
-			addIndexCount(indexedRules, *ruleIndex, options.MaxUniqueValues, &summary.Truncated)
+		case reference.ID != "":
+			addCount(summary.Rules, reference.ID, 1, options.MaxUniqueValues, &summary.Truncated)
+		case reference.HasIndex || reference.GUID != "":
+			addRuleReferenceCount(pendingRules, reference, options.MaxUniqueValues, &summary.Truncated)
 		default:
 			addCount(summary.Rules, "<unresolved>", 1, options.MaxUniqueValues, &summary.Truncated)
 		}
@@ -417,6 +450,32 @@ func inspectResults(
 	return expectDelimiter(decoder, ']')
 }
 
+func makeRuleReference(ruleID string, ruleIndex *int, rule resultRule) ruleReference {
+	if ruleID == "" {
+		ruleID = rule.ID
+	}
+	if ruleIndex == nil {
+		ruleIndex = rule.Index
+	}
+	reference := ruleReference{
+		ID:   ruleID,
+		GUID: rule.GUID,
+		Component: componentReference{
+			Name: rule.ToolComponent.Name,
+			GUID: rule.ToolComponent.GUID,
+		},
+	}
+	if ruleIndex != nil {
+		reference.Index = *ruleIndex
+		reference.HasIndex = true
+	}
+	if componentIndex := rule.ToolComponent.Index; componentIndex != nil {
+		reference.Component.Index = *componentIndex
+		reference.Component.HasIndex = true
+	}
+	return reference
+}
+
 func resultSuppressed(suppressions []suppression) bool {
 	for _, suppression := range suppressions {
 		status := suppression.reviewStatus()
@@ -434,31 +493,93 @@ func (suppression suppression) reviewStatus() string {
 	return suppression.State
 }
 
-func resolveResultLevels(
+func resolveResultRules(
 	summary *Summary,
-	rules []ruleDefinition,
+	components ruleComponents,
 	pending map[ruleReference]int,
 	limit int,
 ) {
-	rulesByID := make(map[string]string, len(rules))
-	for _, rule := range rules {
-		if rule.ID != "" {
-			rulesByID[rule.ID] = rule.Level
-		}
-	}
 	for reference, count := range pending {
-		level := ""
-		if reference.HasIndex && reference.Index >= 0 && reference.Index < len(rules) {
-			level = rules[reference.Index].Level
+		rule, found := resolveRule(components, reference)
+		if !found || rule.ID == "" {
+			addCount(summary.Rules, "<unresolved>", count, limit, &summary.Truncated)
+			continue
 		}
-		if level == "" && reference.ID != "" {
-			level = rulesByID[reference.ID]
-		}
+		addCount(summary.Rules, rule.ID, count, limit, &summary.Truncated)
+	}
+}
+
+func resolveResultLevels(
+	summary *Summary,
+	components ruleComponents,
+	pending map[ruleReference]int,
+	limit int,
+) {
+	for reference, count := range pending {
+		rule, _ := resolveRule(components, reference)
+		level := rule.Level
 		if level == "" {
 			level = "warning"
 		}
 		addCount(summary.Levels, level, count, limit, &summary.Truncated)
 	}
+}
+
+func resolveRule(components ruleComponents, reference ruleReference) (ruleDefinition, bool) {
+	rules, found := componentRules(components, reference.Component)
+	if !found {
+		return ruleDefinition{}, false
+	}
+	if reference.HasIndex && reference.Index >= 0 && reference.Index < len(rules) {
+		return rules[reference.Index], true
+	}
+	if reference.ID != "" {
+		for _, rule := range rules {
+			if rule.ID == reference.ID {
+				return rule, true
+			}
+		}
+	}
+	if reference.GUID != "" {
+		for _, rule := range rules {
+			if rule.GUID == reference.GUID {
+				return rule, true
+			}
+		}
+	}
+	return ruleDefinition{}, false
+}
+
+func componentRules(components ruleComponents, reference componentReference) ([]ruleDefinition, bool) {
+	if !reference.HasIndex && reference.Name == "" && reference.GUID == "" {
+		return components.Driver.Rules, true
+	}
+	if reference.HasIndex {
+		if reference.Index >= 0 && reference.Index < len(components.Extensions) {
+			return components.Extensions[reference.Index].Rules, true
+		}
+		return nil, false
+	}
+	if reference.GUID != "" {
+		if components.Driver.GUID == reference.GUID {
+			return components.Driver.Rules, true
+		}
+		for _, component := range components.Extensions {
+			if component.GUID == reference.GUID {
+				return component.Rules, true
+			}
+		}
+		return nil, false
+	}
+	if components.Driver.tool.Name == reference.Name {
+		return components.Driver.Rules, true
+	}
+	for _, component := range components.Extensions {
+		if component.tool.Name == reference.Name {
+			return component.Rules, true
+		}
+	}
+	return nil, false
 }
 
 func addRuleReferenceCount(
@@ -469,14 +590,6 @@ func addRuleReferenceCount(
 ) {
 	if _, exists := counts[reference]; exists || len(counts) < limit {
 		counts[reference]++
-		return
-	}
-	*truncated = true
-}
-
-func addIndexCount(counts map[int]int, index, limit int, truncated *bool) {
-	if _, exists := counts[index]; exists || len(counts) < limit {
-		counts[index]++
 		return
 	}
 	*truncated = true
