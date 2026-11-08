@@ -33,6 +33,14 @@ type Tool struct {
 	SemanticVersion string
 }
 
+type Taxon struct {
+	ID           string
+	GUID         string
+	TaxonomyName string
+	TaxonomyGUID string
+	Count        int
+}
+
 type ruleDefinition struct {
 	ID    string
 	GUID  string
@@ -43,6 +51,7 @@ type ruleComponent struct {
 	tool  Tool
 	GUID  string
 	Rules []ruleDefinition
+	Taxa  []ruleDefinition
 }
 
 type ruleComponents struct {
@@ -92,10 +101,18 @@ type Summary struct {
 	Levels            map[string]int
 	BaselineStates    map[string]int
 	Rules             map[string]int
-	Taxa              map[string]int
+	Taxa              []Taxon
 	Suppressions      map[string]int
 	Truncated         bool
 	toolSet           map[Tool]struct{}
+	taxonCounts       map[taxonIdentity]int
+}
+
+type taxonIdentity struct {
+	ID           string
+	GUID         string
+	TaxonomyName string
+	TaxonomyGUID string
 }
 
 func Inspect(reader io.Reader, options Options) (Summary, error) {
@@ -132,7 +149,29 @@ func finishSummary(summary Summary) Summary {
 		}
 		return strings.Compare(left.Version, right.Version)
 	})
+	for identity, count := range summary.taxonCounts {
+		summary.Taxa = append(summary.Taxa, Taxon{
+			ID:           identity.ID,
+			GUID:         identity.GUID,
+			TaxonomyName: identity.TaxonomyName,
+			TaxonomyGUID: identity.TaxonomyGUID,
+			Count:        count,
+		})
+	}
+	slices.SortFunc(summary.Taxa, func(left, right Taxon) int {
+		if compared := strings.Compare(left.TaxonomyName, right.TaxonomyName); compared != 0 {
+			return compared
+		}
+		if compared := strings.Compare(left.TaxonomyGUID, right.TaxonomyGUID); compared != 0 {
+			return compared
+		}
+		if compared := strings.Compare(left.ID, right.ID); compared != 0 {
+			return compared
+		}
+		return strings.Compare(left.GUID, right.GUID)
+	})
 	summary.toolSet = nil
+	summary.taxonCounts = nil
 	return summary
 }
 
@@ -168,9 +207,9 @@ func newSummary() Summary {
 		Levels:         make(map[string]int),
 		BaselineStates: make(map[string]int),
 		Rules:          make(map[string]int),
-		Taxa:           make(map[string]int),
 		Suppressions:   make(map[string]int),
 		toolSet:        make(map[Tool]struct{}),
+		taxonCounts:    make(map[taxonIdentity]int),
 	}
 }
 
@@ -227,8 +266,11 @@ func inspectRun(decoder *json.Decoder, summary *Summary, options Options) error 
 		return err
 	}
 	var components ruleComponents
+	var taxonomies []ruleComponent
+	remainingTaxa := options.MaxUniqueValues
 	pendingRules := make(map[ruleReference]int)
 	pendingLevels := make(map[ruleReference]int)
+	pendingTaxa := make(map[ruleReference]int)
 	for decoder.More() {
 		name, err := objectName(decoder)
 		if err != nil {
@@ -236,9 +278,13 @@ func inspectRun(decoder *json.Decoder, summary *Summary, options Options) error 
 		}
 		switch name {
 		case "tool":
-			components, err = inspectTool(decoder, summary, options)
+			components, err = inspectTool(decoder, summary, options, &remainingTaxa)
+		case "taxonomies":
+			taxonomies, err = inspectTaxonomies(
+				decoder, options.MaxTools, &remainingTaxa, &summary.Truncated,
+			)
 		case "results":
-			err = inspectResults(decoder, summary, pendingRules, pendingLevels, options)
+			err = inspectResults(decoder, summary, pendingRules, pendingLevels, pendingTaxa, options)
 		default:
 			err = skipValue(decoder)
 		}
@@ -251,10 +297,16 @@ func inspectRun(decoder *json.Decoder, summary *Summary, options Options) error 
 	}
 	resolveResultRules(summary, components, pendingRules, options.MaxUniqueValues)
 	resolveResultLevels(summary, components, pendingLevels, options.MaxUniqueValues)
+	resolveResultTaxa(summary, components, taxonomies, pendingTaxa, options.MaxUniqueValues)
 	return nil
 }
 
-func inspectTool(decoder *json.Decoder, summary *Summary, options Options) (ruleComponents, error) {
+func inspectTool(
+	decoder *json.Decoder,
+	summary *Summary,
+	options Options,
+	remainingTaxa *int,
+) (ruleComponents, error) {
 	if err := expectDelimiter(decoder, '{'); err != nil {
 		return ruleComponents{}, err
 	}
@@ -267,12 +319,15 @@ func inspectTool(decoder *json.Decoder, summary *Summary, options Options) (rule
 		}
 		switch name {
 		case "driver":
-			components.Driver, err = inspectToolComponent(decoder, remainingRules, &summary.Truncated)
+			components.Driver, err = inspectToolComponent(
+				decoder, remainingRules, *remainingTaxa, &summary.Truncated,
+			)
 			remainingRules -= len(components.Driver.Rules)
+			*remainingTaxa -= len(components.Driver.Taxa)
 			addTool(summary, components.Driver.tool, options.MaxTools)
 		case "extensions":
 			components.Extensions, err = inspectToolExtensions(
-				decoder, summary, options.MaxTools, &remainingRules, &summary.Truncated,
+				decoder, summary, options.MaxTools, &remainingRules, remainingTaxa, &summary.Truncated,
 			)
 		default:
 			err = skipValue(decoder)
@@ -289,6 +344,7 @@ func inspectToolExtensions(
 	summary *Summary,
 	toolLimit int,
 	remainingRules *int,
+	remainingTaxa *int,
 	truncated *bool,
 ) ([]ruleComponent, error) {
 	if err := expectDelimiter(decoder, '['); err != nil {
@@ -298,15 +354,18 @@ func inspectToolExtensions(
 	for decoder.More() {
 		retain := len(components) < toolLimit
 		maxRules := 0
+		maxTaxa := 0
 		if retain {
 			maxRules = *remainingRules
+			maxTaxa = *remainingTaxa
 		}
-		component, err := inspectToolComponent(decoder, maxRules, truncated)
+		component, err := inspectToolComponent(decoder, maxRules, maxTaxa, truncated)
 		if err != nil {
 			return nil, err
 		}
 		if retain {
 			*remainingRules -= len(component.Rules)
+			*remainingTaxa -= len(component.Taxa)
 			components = append(components, component)
 		} else {
 			*truncated = true
@@ -319,6 +378,7 @@ func inspectToolExtensions(
 func inspectToolComponent(
 	decoder *json.Decoder,
 	maxRules int,
+	maxTaxa int,
 	truncated *bool,
 ) (ruleComponent, error) {
 	if err := expectDelimiter(decoder, '{'); err != nil {
@@ -342,6 +402,8 @@ func inspectToolComponent(
 			err = decoder.Decode(&tool.SemanticVersion)
 		case "rules":
 			component.Rules, err = inspectRuleDefinitions(decoder, maxRules, truncated)
+		case "taxa":
+			component.Taxa, err = inspectRuleDefinitions(decoder, maxTaxa, truncated)
 		default:
 			err = skipValue(decoder)
 		}
@@ -351,6 +413,36 @@ func inspectToolComponent(
 	}
 	component.tool = tool
 	return component, expectDelimiter(decoder, '}')
+}
+
+func inspectTaxonomies(
+	decoder *json.Decoder,
+	componentLimit int,
+	remainingTaxa *int,
+	truncated *bool,
+) ([]ruleComponent, error) {
+	if err := expectDelimiter(decoder, '['); err != nil {
+		return nil, err
+	}
+	var components []ruleComponent
+	for decoder.More() {
+		retain := len(components) < componentLimit
+		maxTaxa := 0
+		if retain {
+			maxTaxa = *remainingTaxa
+		}
+		component, err := inspectToolComponent(decoder, 0, maxTaxa, truncated)
+		if err != nil {
+			return nil, err
+		}
+		if retain {
+			*remainingTaxa -= len(component.Taxa)
+			components = append(components, component)
+		} else {
+			*truncated = true
+		}
+	}
+	return components, expectDelimiter(decoder, ']')
 }
 
 func inspectRuleDefinitions(decoder *json.Decoder, limit int, truncated *bool) ([]ruleDefinition, error) {
@@ -385,6 +477,7 @@ func inspectResults(
 	summary *Summary,
 	pendingRules map[ruleReference]int,
 	pendingLevels map[ruleReference]int,
+	pendingTaxa map[ruleReference]int,
 	options Options,
 ) error {
 	if err := expectDelimiter(decoder, '['); err != nil {
@@ -400,9 +493,7 @@ func inspectResults(
 			BaselineState   string        `json:"baselineState"`
 			OccurrenceCount int           `json:"occurrenceCount"`
 			Suppressions    []suppression `json:"suppressions"`
-			Taxa            []struct {
-				ID string `json:"id"`
-			} `json:"taxa"`
+			Taxa            []resultRule  `json:"taxa"`
 		}
 		if err := decoder.Decode(&result); err != nil {
 			return err
@@ -442,9 +533,12 @@ func inspectResults(
 			addCount(summary.Suppressions, value, 1, options.MaxUniqueValues, &summary.Truncated)
 		}
 		for _, taxon := range result.Taxa {
-			if taxon.ID != "" {
-				addCount(summary.Taxa, taxon.ID, 1, options.MaxUniqueValues, &summary.Truncated)
-			}
+			addRuleReferenceCount(
+				pendingTaxa,
+				makeRuleReference("", nil, taxon),
+				options.MaxUniqueValues,
+				&summary.Truncated,
+			)
 		}
 	}
 	return expectDelimiter(decoder, ']')
@@ -525,29 +619,109 @@ func resolveResultLevels(
 	}
 }
 
+func resolveResultTaxa(
+	summary *Summary,
+	components ruleComponents,
+	taxonomies []ruleComponent,
+	pending map[ruleReference]int,
+	limit int,
+) {
+	for reference, count := range pending {
+		identity := taxonIdentity{
+			ID:           reference.ID,
+			GUID:         reference.GUID,
+			TaxonomyName: reference.Component.Name,
+			TaxonomyGUID: reference.Component.GUID,
+		}
+		component, found := taxonComponent(components, taxonomies, reference.Component)
+		if found {
+			identity.TaxonomyName = component.tool.Name
+			identity.TaxonomyGUID = component.GUID
+			if taxon, resolved := resolveDescriptor(component.Taxa, reference); resolved {
+				identity.ID = taxon.ID
+				identity.GUID = taxon.GUID
+			}
+		}
+		if identity.ID == "" && identity.GUID == "" {
+			identity.ID = "<unresolved>"
+		}
+		addTaxonCount(summary, identity, count, limit)
+	}
+}
+
 func resolveRule(components ruleComponents, reference ruleReference) (ruleDefinition, bool) {
 	rules, found := componentRules(components, reference.Component)
 	if !found {
 		return ruleDefinition{}, false
 	}
-	if reference.HasIndex && reference.Index >= 0 && reference.Index < len(rules) {
-		return rules[reference.Index], true
+	return resolveDescriptor(rules, reference)
+}
+
+func resolveDescriptor(definitions []ruleDefinition, reference ruleReference) (ruleDefinition, bool) {
+	if reference.HasIndex && reference.Index >= 0 && reference.Index < len(definitions) {
+		return definitions[reference.Index], true
 	}
 	if reference.ID != "" {
-		for _, rule := range rules {
+		for _, rule := range definitions {
 			if rule.ID == reference.ID {
 				return rule, true
 			}
 		}
 	}
 	if reference.GUID != "" {
-		for _, rule := range rules {
+		for _, rule := range definitions {
 			if rule.GUID == reference.GUID {
 				return rule, true
 			}
 		}
 	}
 	return ruleDefinition{}, false
+}
+
+func taxonComponent(
+	components ruleComponents,
+	taxonomies []ruleComponent,
+	reference componentReference,
+) (ruleComponent, bool) {
+	if !reference.HasIndex && reference.Name == "" && reference.GUID == "" {
+		return components.Driver, true
+	}
+	if reference.HasIndex {
+		if reference.Index >= 0 && reference.Index < len(components.Extensions) {
+			return components.Extensions[reference.Index], true
+		}
+		return ruleComponent{}, false
+	}
+	if reference.GUID != "" {
+		if components.Driver.GUID == reference.GUID {
+			return components.Driver, true
+		}
+		for _, component := range components.Extensions {
+			if component.GUID == reference.GUID {
+				return component, true
+			}
+		}
+		for _, component := range taxonomies {
+			if component.GUID == reference.GUID {
+				return component, true
+			}
+		}
+		return ruleComponent{}, false
+	}
+	if components.Driver.tool.Name == reference.Name {
+		return components.Driver, true
+	}
+	for _, component := range components.Extensions {
+		if component.tool.Name == reference.Name {
+			return component, true
+		}
+	}
+	for _, component := range taxonomies {
+		if component.tool.Name == reference.Name {
+			return component, true
+		}
+	}
+	return ruleComponent{}, false
 }
 
 func componentRules(components ruleComponents, reference componentReference) ([]ruleDefinition, bool) {
@@ -608,6 +782,14 @@ func addTool(summary *Summary, tool Tool, limit int) {
 	}
 	summary.toolSet[tool] = struct{}{}
 	summary.Tools = append(summary.Tools, tool)
+}
+
+func addTaxonCount(summary *Summary, taxon taxonIdentity, count, limit int) {
+	if _, ok := summary.taxonCounts[taxon]; !ok && len(summary.taxonCounts) >= limit {
+		summary.Truncated = true
+		return
+	}
+	summary.taxonCounts[taxon] += count
 }
 
 func addCount(values map[string]int, value string, count, limit int, truncated *bool) {
