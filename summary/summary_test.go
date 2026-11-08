@@ -117,6 +117,72 @@ func TestInspectResolvesIndexedTaxaAndPreservesTaxonomy(t *testing.T) {
 	}})
 }
 
+func TestInspectAcceptsNullResultsAndPreservesTools(t *testing.T) {
+	input := `{
+  "version": "2.1.0",
+  "runs": [{
+    "results": null,
+    "tool": {"driver": {"name": "failed-scanner", "version": "1.2.3"}}
+  }]
+}`
+
+	got, err := summary.Inspect(strings.NewReader(input), summary.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Runs != 1 || got.Results != 0 {
+		t.Fatalf("summary = %#v", got)
+	}
+	if len(got.Tools) != 1 || got.Tools[0] != (summary.Tool{Name: "failed-scanner", Version: "1.2.3"}) {
+		t.Fatalf("tools = %#v", got.Tools)
+	}
+}
+
+func TestInspectIncludesTaxaImpliedByRuleRelationships(t *testing.T) {
+	input := `{
+  "version": "2.1.0",
+  "runs": [{
+    "results": [{
+      "ruleId": "js/xss",
+      "message": {"text": "implicit"}
+    }, {
+      "ruleId": "js/xss",
+      "message": {"text": "explicit"},
+      "taxa": [{"id": "79", "toolComponent": {"name": "CWE"}}]
+    }],
+    "tool": {"driver": {
+      "name": "scanner",
+      "rules": [{
+        "id": "js/xss",
+        "relationships": [{
+          "target": {"id": "79", "toolComponent": {"name": "CWE"}},
+          "kinds": ["superset"]
+        }, {
+          "target": {"id": "89", "toolComponent": {"name": "CWE"}},
+          "kinds": ["equal"]
+        }, {
+          "target": {"guid": "11111111-1111-4111-8111-111111111111", "toolComponent": {"name": "CWE"}},
+          "kinds": ["equal"]
+        }]
+      }]
+    }},
+    "taxonomies": [{"name": "CWE", "taxa": [
+      {"id": "79", "guid": "11111111-1111-4111-8111-111111111111"},
+      {"id": "89"}
+    ]}]
+  }]
+}`
+
+	got, err := summary.Inspect(strings.NewReader(input), summary.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTaxa(t, got.Taxa, []summary.Taxon{
+		{ID: "79", GUID: "11111111-1111-4111-8111-111111111111", TaxonomyName: "CWE", Count: 2},
+		{ID: "89", TaxonomyName: "CWE", Count: 2},
+	})
+}
+
 func TestInspectResolvesRuleIndexesWhenResultsPrecedeTool(t *testing.T) {
 	input := `{
   "runs": [{
@@ -166,6 +232,42 @@ func TestInspectResolvesEffectiveLevels(t *testing.T) {
 		"note":    1,
 		"warning": 1,
 	})
+}
+
+func TestInspectAppliesInvocationRuleLevelOverrides(t *testing.T) {
+	input := `{
+  "version": "2.1.0",
+  "runs": [{
+    "results": [{
+      "ruleId": "RULE-1",
+      "provenance": {"invocationIndex": 0},
+      "message": {"text": "overridden"}
+    }, {
+      "ruleId": "RULE-1",
+      "message": {"text": "default"}
+    }],
+    "invocations": [{
+      "executionSuccessful": true,
+      "ruleConfigurationOverrides": [{
+        "descriptor": {"index": 0},
+        "configuration": {"level": "error"}
+      }, {
+        "descriptor": {"id": "RULE-1"},
+        "configuration": {"level": "warning"}
+      }]
+    }],
+    "tool": {"driver": {"name": "scanner", "rules": [{
+      "id": "RULE-1",
+      "defaultConfiguration": {"level": "note"}
+    }]}}
+  }]
+}`
+
+	got, err := summary.Inspect(strings.NewReader(input), summary.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCounts(t, got.Levels, map[string]int{"error": 1, "note": 1})
 }
 
 func TestInspectResolvesReportingDescriptorReferences(t *testing.T) {

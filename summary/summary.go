@@ -42,9 +42,10 @@ type Taxon struct {
 }
 
 type ruleDefinition struct {
-	ID    string
-	GUID  string
-	Level string
+	ID           string
+	GUID         string
+	Level        string
+	ImplicitTaxa []ruleReference
 }
 
 type ruleComponent struct {
@@ -72,6 +73,32 @@ type ruleReference struct {
 	Index     int
 	HasIndex  bool
 	Component componentReference
+}
+
+type levelReference struct {
+	Rule            ruleReference
+	InvocationIndex int
+}
+
+type ruleTaxonReference struct {
+	Rule  ruleReference
+	Taxon ruleReference
+}
+
+type ruleIdentity struct {
+	Component int
+	ID        string
+	GUID      string
+}
+
+type ruleTaxonIdentity struct {
+	Rule  ruleIdentity
+	Taxon taxonIdentity
+}
+
+type ruleOverride struct {
+	Rule  ruleReference
+	Level string
 }
 
 type suppression struct {
@@ -267,10 +294,13 @@ func inspectRun(decoder *json.Decoder, summary *Summary, options Options) error 
 	}
 	var components ruleComponents
 	var taxonomies []ruleComponent
+	var invocations [][]ruleOverride
 	remainingTaxa := options.MaxUniqueValues
 	pendingRules := make(map[ruleReference]int)
-	pendingLevels := make(map[ruleReference]int)
+	pendingLevels := make(map[levelReference]int)
 	pendingTaxa := make(map[ruleReference]int)
+	pendingResultRules := make(map[ruleReference]int)
+	explicitRuleTaxa := make(map[ruleTaxonReference]int)
 	for decoder.More() {
 		name, err := objectName(decoder)
 		if err != nil {
@@ -283,8 +313,21 @@ func inspectRun(decoder *json.Decoder, summary *Summary, options Options) error 
 			taxonomies, err = inspectTaxonomies(
 				decoder, options.MaxTools, &remainingTaxa, &summary.Truncated,
 			)
+		case "invocations":
+			invocations, err = inspectInvocations(
+				decoder, options.MaxUniqueValues, &summary.Truncated,
+			)
 		case "results":
-			err = inspectResults(decoder, summary, pendingRules, pendingLevels, pendingTaxa, options)
+			err = inspectResults(
+				decoder,
+				summary,
+				pendingRules,
+				pendingLevels,
+				pendingTaxa,
+				pendingResultRules,
+				explicitRuleTaxa,
+				options,
+			)
 		default:
 			err = skipValue(decoder)
 		}
@@ -296,7 +339,16 @@ func inspectRun(decoder *json.Decoder, summary *Summary, options Options) error 
 		return err
 	}
 	resolveResultRules(summary, components, pendingRules, options.MaxUniqueValues)
-	resolveResultLevels(summary, components, pendingLevels, options.MaxUniqueValues)
+	resolveResultLevels(summary, components, invocations, pendingLevels, options.MaxUniqueValues)
+	resolveImplicitResultTaxa(
+		summary,
+		components,
+		taxonomies,
+		pendingResultRules,
+		explicitRuleTaxa,
+		pendingTaxa,
+		options.MaxUniqueValues,
+	)
 	resolveResultTaxa(summary, components, taxonomies, pendingTaxa, options.MaxUniqueValues)
 	return nil
 }
@@ -312,6 +364,7 @@ func inspectTool(
 	}
 	var components ruleComponents
 	remainingRules := options.MaxUniqueValues
+	remainingRelationships := options.MaxUniqueValues
 	for decoder.More() {
 		name, err := objectName(decoder)
 		if err != nil {
@@ -320,14 +373,21 @@ func inspectTool(
 		switch name {
 		case "driver":
 			components.Driver, err = inspectToolComponent(
-				decoder, remainingRules, *remainingTaxa, &summary.Truncated,
+				decoder, remainingRules, remainingRelationships, *remainingTaxa, &summary.Truncated,
 			)
 			remainingRules -= len(components.Driver.Rules)
+			remainingRelationships -= implicitTaxaCount(components.Driver.Rules)
 			*remainingTaxa -= len(components.Driver.Taxa)
 			addTool(summary, components.Driver.tool, options.MaxTools)
 		case "extensions":
 			components.Extensions, err = inspectToolExtensions(
-				decoder, summary, options.MaxTools, &remainingRules, remainingTaxa, &summary.Truncated,
+				decoder,
+				summary,
+				options.MaxTools,
+				&remainingRules,
+				&remainingRelationships,
+				remainingTaxa,
+				&summary.Truncated,
 			)
 		default:
 			err = skipValue(decoder)
@@ -344,6 +404,7 @@ func inspectToolExtensions(
 	summary *Summary,
 	toolLimit int,
 	remainingRules *int,
+	remainingRelationships *int,
 	remainingTaxa *int,
 	truncated *bool,
 ) ([]ruleComponent, error) {
@@ -354,17 +415,22 @@ func inspectToolExtensions(
 	for decoder.More() {
 		retain := len(components) < toolLimit
 		maxRules := 0
+		maxRelationships := 0
 		maxTaxa := 0
 		if retain {
 			maxRules = *remainingRules
+			maxRelationships = *remainingRelationships
 			maxTaxa = *remainingTaxa
 		}
-		component, err := inspectToolComponent(decoder, maxRules, maxTaxa, truncated)
+		component, err := inspectToolComponent(
+			decoder, maxRules, maxRelationships, maxTaxa, truncated,
+		)
 		if err != nil {
 			return nil, err
 		}
 		if retain {
 			*remainingRules -= len(component.Rules)
+			*remainingRelationships -= implicitTaxaCount(component.Rules)
 			*remainingTaxa -= len(component.Taxa)
 			components = append(components, component)
 		} else {
@@ -378,6 +444,7 @@ func inspectToolExtensions(
 func inspectToolComponent(
 	decoder *json.Decoder,
 	maxRules int,
+	maxRelationships int,
 	maxTaxa int,
 	truncated *bool,
 ) (ruleComponent, error) {
@@ -401,9 +468,11 @@ func inspectToolComponent(
 		case "semanticVersion":
 			err = decoder.Decode(&tool.SemanticVersion)
 		case "rules":
-			component.Rules, err = inspectRuleDefinitions(decoder, maxRules, truncated)
+			component.Rules, err = inspectRuleDefinitions(
+				decoder, maxRules, maxRelationships, truncated,
+			)
 		case "taxa":
-			component.Taxa, err = inspectRuleDefinitions(decoder, maxTaxa, truncated)
+			component.Taxa, err = inspectRuleDefinitions(decoder, maxTaxa, -1, truncated)
 		default:
 			err = skipValue(decoder)
 		}
@@ -431,7 +500,7 @@ func inspectTaxonomies(
 		if retain {
 			maxTaxa = *remainingTaxa
 		}
-		component, err := inspectToolComponent(decoder, 0, maxTaxa, truncated)
+		component, err := inspectToolComponent(decoder, 0, 0, maxTaxa, truncated)
 		if err != nil {
 			return nil, err
 		}
@@ -445,11 +514,108 @@ func inspectTaxonomies(
 	return components, expectDelimiter(decoder, ']')
 }
 
-func inspectRuleDefinitions(decoder *json.Decoder, limit int, truncated *bool) ([]ruleDefinition, error) {
+func inspectInvocations(
+	decoder *json.Decoder,
+	limit int,
+	truncated *bool,
+) ([][]ruleOverride, error) {
+	if err := expectDelimiter(decoder, '['); err != nil {
+		return nil, err
+	}
+	var invocations [][]ruleOverride
+	remainingOverrides := limit
+	for decoder.More() {
+		retain := len(invocations) < limit
+		maxOverrides := 0
+		if retain {
+			maxOverrides = remainingOverrides
+		}
+		overrides, err := inspectInvocation(decoder, maxOverrides, truncated)
+		if err != nil {
+			return nil, err
+		}
+		if retain {
+			remainingOverrides -= len(overrides)
+			invocations = append(invocations, overrides)
+		} else {
+			*truncated = true
+		}
+	}
+	return invocations, expectDelimiter(decoder, ']')
+}
+
+func inspectInvocation(
+	decoder *json.Decoder,
+	limit int,
+	truncated *bool,
+) ([]ruleOverride, error) {
+	if err := expectDelimiter(decoder, '{'); err != nil {
+		return nil, err
+	}
+	var overrides []ruleOverride
+	for decoder.More() {
+		name, err := objectName(decoder)
+		if err != nil {
+			return nil, err
+		}
+		if name == "ruleConfigurationOverrides" {
+			overrides, err = inspectRuleOverrides(decoder, limit, truncated)
+		} else {
+			err = skipValue(decoder)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return overrides, expectDelimiter(decoder, '}')
+}
+
+func inspectRuleOverrides(
+	decoder *json.Decoder,
+	limit int,
+	truncated *bool,
+) ([]ruleOverride, error) {
+	if err := expectDelimiter(decoder, '['); err != nil {
+		return nil, err
+	}
+	var overrides []ruleOverride
+	for decoder.More() {
+		var override struct {
+			Configuration struct {
+				Level string `json:"level"`
+			} `json:"configuration"`
+			Descriptor resultRule `json:"descriptor"`
+		}
+		if err := decoder.Decode(&override); err != nil {
+			return nil, err
+		}
+		if len(overrides) >= limit {
+			*truncated = true
+			continue
+		}
+		level := override.Configuration.Level
+		if level == "" {
+			level = "warning"
+		}
+		overrides = append(overrides, ruleOverride{
+			Rule:  makeRuleReference("", nil, override.Descriptor),
+			Level: level,
+		})
+	}
+	return overrides, expectDelimiter(decoder, ']')
+}
+
+func inspectRuleDefinitions(
+	decoder *json.Decoder,
+	limit int,
+	relationshipLimit int,
+	truncated *bool,
+) ([]ruleDefinition, error) {
 	if err := expectDelimiter(decoder, '['); err != nil {
 		return nil, err
 	}
 	var definitions []ruleDefinition
+	remainingRelationships := relationshipLimit
 	for decoder.More() {
 		var rule struct {
 			ID                   string `json:"id"`
@@ -457,30 +623,72 @@ func inspectRuleDefinitions(decoder *json.Decoder, limit int, truncated *bool) (
 			DefaultConfiguration struct {
 				Level string `json:"level"`
 			} `json:"defaultConfiguration"`
+			Relationships []struct {
+				Target resultRule `json:"target"`
+				Kinds  []string   `json:"kinds"`
+			} `json:"relationships"`
 		}
 		if err := decoder.Decode(&rule); err != nil {
 			return nil, err
 		}
-		if len(definitions) < limit {
-			definitions = append(definitions, ruleDefinition{
-				ID: rule.ID, GUID: rule.GUID, Level: rule.DefaultConfiguration.Level,
-			})
-		} else if truncated != nil {
-			*truncated = true
+		if len(definitions) >= limit {
+			if truncated != nil {
+				*truncated = true
+			}
+			continue
 		}
+		definition := ruleDefinition{
+			ID: rule.ID, GUID: rule.GUID, Level: rule.DefaultConfiguration.Level,
+		}
+		if relationshipLimit < 0 {
+			definitions = append(definitions, definition)
+			continue
+		}
+		for _, relationship := range rule.Relationships {
+			if !implicitTaxonRelationship(relationship.Kinds) {
+				continue
+			}
+			if remainingRelationships == 0 {
+				if truncated != nil {
+					*truncated = true
+				}
+				continue
+			}
+			definition.ImplicitTaxa = append(
+				definition.ImplicitTaxa,
+				makeRuleReference("", nil, relationship.Target),
+			)
+			remainingRelationships--
+		}
+		definitions = append(definitions, definition)
 	}
 	return definitions, expectDelimiter(decoder, ']')
+}
+
+func implicitTaxaCount(rules []ruleDefinition) int {
+	count := 0
+	for _, rule := range rules {
+		count += len(rule.ImplicitTaxa)
+	}
+	return count
+}
+
+func implicitTaxonRelationship(kinds []string) bool {
+	return slices.Contains(kinds, "equal") || slices.Contains(kinds, "superset")
 }
 
 func inspectResults(
 	decoder *json.Decoder,
 	summary *Summary,
 	pendingRules map[ruleReference]int,
-	pendingLevels map[ruleReference]int,
+	pendingLevels map[levelReference]int,
 	pendingTaxa map[ruleReference]int,
+	pendingResultRules map[ruleReference]int,
+	explicitRuleTaxa map[ruleTaxonReference]int,
 	options Options,
 ) error {
-	if err := expectDelimiter(decoder, '['); err != nil {
+	present, err := beginNullableArray(decoder)
+	if err != nil || !present {
 		return err
 	}
 	for decoder.More() {
@@ -494,6 +702,9 @@ func inspectResults(
 			OccurrenceCount int           `json:"occurrenceCount"`
 			Suppressions    []suppression `json:"suppressions"`
 			Taxa            []resultRule  `json:"taxa"`
+			Provenance      struct {
+				InvocationIndex *int `json:"invocationIndex"`
+			} `json:"provenance"`
 		}
 		if err := decoder.Decode(&result); err != nil {
 			return err
@@ -509,8 +720,20 @@ func inspectResults(
 		case result.Level != "":
 			addCount(summary.Levels, result.Level, 1, options.MaxUniqueValues, &summary.Truncated)
 		default:
-			addRuleReferenceCount(pendingLevels, reference, options.MaxUniqueValues, &summary.Truncated)
+			invocationIndex := -1
+			if result.Provenance.InvocationIndex != nil && *result.Provenance.InvocationIndex >= 0 {
+				invocationIndex = *result.Provenance.InvocationIndex
+			}
+			addLevelReferenceCount(
+				pendingLevels,
+				levelReference{Rule: reference, InvocationIndex: invocationIndex},
+				options.MaxUniqueValues,
+				&summary.Truncated,
+			)
 		}
+		addRuleReferenceCount(
+			pendingResultRules, reference, options.MaxUniqueValues, &summary.Truncated,
+		)
 		if result.BaselineState != "" {
 			addCount(summary.BaselineStates, result.BaselineState, 1, options.MaxUniqueValues, &summary.Truncated)
 		}
@@ -533,15 +756,37 @@ func inspectResults(
 			addCount(summary.Suppressions, value, 1, options.MaxUniqueValues, &summary.Truncated)
 		}
 		for _, taxon := range result.Taxa {
+			taxonReference := makeRuleReference("", nil, taxon)
 			addRuleReferenceCount(
 				pendingTaxa,
-				makeRuleReference("", nil, taxon),
+				taxonReference,
+				options.MaxUniqueValues,
+				&summary.Truncated,
+			)
+			addRuleTaxonReferenceCount(
+				explicitRuleTaxa,
+				ruleTaxonReference{Rule: reference, Taxon: taxonReference},
 				options.MaxUniqueValues,
 				&summary.Truncated,
 			)
 		}
 	}
 	return expectDelimiter(decoder, ']')
+}
+
+func beginNullableArray(decoder *json.Decoder) (bool, error) {
+	token, err := decoder.Token()
+	if err != nil {
+		return false, err
+	}
+	if token == nil {
+		return false, nil
+	}
+	delimiter, ok := token.(json.Delim)
+	if !ok || delimiter != '[' {
+		return false, fmt.Errorf("expected %q or null, got %v", '[', token)
+	}
+	return true, nil
 }
 
 func makeRuleReference(ruleID string, ruleIndex *int, rule resultRule) ruleReference {
@@ -606,16 +851,90 @@ func resolveResultRules(
 func resolveResultLevels(
 	summary *Summary,
 	components ruleComponents,
-	pending map[ruleReference]int,
+	invocations [][]ruleOverride,
+	pending map[levelReference]int,
 	limit int,
 ) {
+	overrides := resolveInvocationRuleLevels(components, invocations)
 	for reference, count := range pending {
-		rule, _ := resolveRule(components, reference)
+		rule, identity, found := resolveRuleIdentity(components, reference.Rule)
 		level := rule.Level
+		if found && reference.InvocationIndex >= 0 && reference.InvocationIndex < len(overrides) {
+			if override, overridden := overrides[reference.InvocationIndex][identity]; overridden {
+				level = override
+			}
+		}
 		if level == "" {
 			level = "warning"
 		}
 		addCount(summary.Levels, level, count, limit, &summary.Truncated)
+	}
+}
+
+func resolveInvocationRuleLevels(
+	components ruleComponents,
+	invocations [][]ruleOverride,
+) []map[ruleIdentity]string {
+	levels := make([]map[ruleIdentity]string, len(invocations))
+	for invocationIndex, invocation := range invocations {
+		levels[invocationIndex] = make(map[ruleIdentity]string)
+		for _, override := range invocation {
+			_, identity, found := resolveRuleIdentity(components, override.Rule)
+			if !found {
+				continue
+			}
+			if _, exists := levels[invocationIndex][identity]; !exists {
+				levels[invocationIndex][identity] = override.Level
+			}
+		}
+	}
+	return levels
+}
+
+func resolveImplicitResultTaxa(
+	summary *Summary,
+	components ruleComponents,
+	taxonomies []ruleComponent,
+	resultRules map[ruleReference]int,
+	explicitRuleTaxa map[ruleTaxonReference]int,
+	pendingTaxa map[ruleReference]int,
+	limit int,
+) {
+	ruleCounts := make(map[ruleIdentity]int)
+	rules := make(map[ruleIdentity]ruleDefinition)
+	for reference, count := range resultRules {
+		rule, identity, found := resolveRuleIdentity(components, reference)
+		if !found {
+			continue
+		}
+		ruleCounts[identity] += count
+		rules[identity] = rule
+	}
+	explicitCounts := make(map[ruleTaxonIdentity]int)
+	for pair, count := range explicitRuleTaxa {
+		_, ruleID, found := resolveRuleIdentity(components, pair.Rule)
+		if !found {
+			continue
+		}
+		taxon := resolveTaxonIdentity(components, taxonomies, pair.Taxon)
+		explicitCounts[ruleTaxonIdentity{Rule: ruleID, Taxon: taxon}] += count
+	}
+	for ruleID, count := range ruleCounts {
+		seen := make(map[taxonIdentity]bool)
+		for _, reference := range rules[ruleID].ImplicitTaxa {
+			taxon := resolveTaxonIdentity(components, taxonomies, reference)
+			if seen[taxon] {
+				continue
+			}
+			seen[taxon] = true
+			explicit := explicitCounts[ruleTaxonIdentity{Rule: ruleID, Taxon: taxon}]
+			missing := count - min(count, explicit)
+			if missing > 0 {
+				addRuleReferenceCounts(
+					pendingTaxa, reference, missing, limit, &summary.Truncated,
+				)
+			}
+		}
 	}
 }
 
@@ -627,34 +946,54 @@ func resolveResultTaxa(
 	limit int,
 ) {
 	for reference, count := range pending {
-		identity := taxonIdentity{
-			ID:           reference.ID,
-			GUID:         reference.GUID,
-			TaxonomyName: reference.Component.Name,
-			TaxonomyGUID: reference.Component.GUID,
-		}
-		component, found := taxonComponent(components, taxonomies, reference.Component)
-		if found {
-			identity.TaxonomyName = component.tool.Name
-			identity.TaxonomyGUID = component.GUID
-			if taxon, resolved := resolveDescriptor(component.Taxa, reference); resolved {
-				identity.ID = taxon.ID
-				identity.GUID = taxon.GUID
-			}
-		}
-		if identity.ID == "" && identity.GUID == "" {
-			identity.ID = "<unresolved>"
-		}
-		addTaxonCount(summary, identity, count, limit)
+		addTaxonCount(summary, resolveTaxonIdentity(components, taxonomies, reference), count, limit)
 	}
 }
 
-func resolveRule(components ruleComponents, reference ruleReference) (ruleDefinition, bool) {
-	rules, found := componentRules(components, reference.Component)
-	if !found {
-		return ruleDefinition{}, false
+func resolveTaxonIdentity(
+	components ruleComponents,
+	taxonomies []ruleComponent,
+	reference ruleReference,
+) taxonIdentity {
+	identity := taxonIdentity{
+		ID:           reference.ID,
+		GUID:         reference.GUID,
+		TaxonomyName: reference.Component.Name,
+		TaxonomyGUID: reference.Component.GUID,
 	}
-	return resolveDescriptor(rules, reference)
+	component, found := taxonComponent(components, taxonomies, reference.Component)
+	if found {
+		identity.TaxonomyName = component.tool.Name
+		identity.TaxonomyGUID = component.GUID
+		if taxon, resolved := resolveDescriptor(component.Taxa, reference); resolved {
+			identity.ID = taxon.ID
+			identity.GUID = taxon.GUID
+		}
+	}
+	if identity.ID == "" && identity.GUID == "" {
+		identity.ID = "<unresolved>"
+	}
+	return identity
+}
+
+func resolveRule(components ruleComponents, reference ruleReference) (ruleDefinition, bool) {
+	rule, _, found := resolveRuleIdentity(components, reference)
+	return rule, found
+}
+
+func resolveRuleIdentity(
+	components ruleComponents,
+	reference ruleReference,
+) (ruleDefinition, ruleIdentity, bool) {
+	rules, component, found := componentRules(components, reference.Component)
+	if !found {
+		return ruleDefinition{}, ruleIdentity{}, false
+	}
+	rule, found := resolveDescriptor(rules, reference)
+	if !found {
+		return ruleDefinition{}, ruleIdentity{}, false
+	}
+	return rule, ruleIdentity{Component: component, ID: rule.ID, GUID: rule.GUID}, true
 }
 
 func resolveDescriptor(definitions []ruleDefinition, reference ruleReference) (ruleDefinition, bool) {
@@ -724,41 +1063,80 @@ func taxonComponent(
 	return ruleComponent{}, false
 }
 
-func componentRules(components ruleComponents, reference componentReference) ([]ruleDefinition, bool) {
+func componentRules(
+	components ruleComponents,
+	reference componentReference,
+) ([]ruleDefinition, int, bool) {
 	if !reference.HasIndex && reference.Name == "" && reference.GUID == "" {
-		return components.Driver.Rules, true
+		return components.Driver.Rules, -1, true
 	}
 	if reference.HasIndex {
 		if reference.Index >= 0 && reference.Index < len(components.Extensions) {
-			return components.Extensions[reference.Index].Rules, true
+			return components.Extensions[reference.Index].Rules, reference.Index, true
 		}
-		return nil, false
+		return nil, 0, false
 	}
 	if reference.GUID != "" {
 		if components.Driver.GUID == reference.GUID {
-			return components.Driver.Rules, true
+			return components.Driver.Rules, -1, true
 		}
-		for _, component := range components.Extensions {
+		for index, component := range components.Extensions {
 			if component.GUID == reference.GUID {
-				return component.Rules, true
+				return component.Rules, index, true
 			}
 		}
-		return nil, false
+		return nil, 0, false
 	}
 	if components.Driver.tool.Name == reference.Name {
-		return components.Driver.Rules, true
+		return components.Driver.Rules, -1, true
 	}
-	for _, component := range components.Extensions {
+	for index, component := range components.Extensions {
 		if component.tool.Name == reference.Name {
-			return component.Rules, true
+			return component.Rules, index, true
 		}
 	}
-	return nil, false
+	return nil, 0, false
 }
 
 func addRuleReferenceCount(
 	counts map[ruleReference]int,
 	reference ruleReference,
+	limit int,
+	truncated *bool,
+) {
+	addRuleReferenceCounts(counts, reference, 1, limit, truncated)
+}
+
+func addRuleReferenceCounts(
+	counts map[ruleReference]int,
+	reference ruleReference,
+	count int,
+	limit int,
+	truncated *bool,
+) {
+	if _, exists := counts[reference]; exists || len(counts) < limit {
+		counts[reference] += count
+		return
+	}
+	*truncated = true
+}
+
+func addLevelReferenceCount(
+	counts map[levelReference]int,
+	reference levelReference,
+	limit int,
+	truncated *bool,
+) {
+	if _, exists := counts[reference]; exists || len(counts) < limit {
+		counts[reference]++
+		return
+	}
+	*truncated = true
+}
+
+func addRuleTaxonReferenceCount(
+	counts map[ruleTaxonReference]int,
+	reference ruleTaxonReference,
 	limit int,
 	truncated *bool,
 ) {
