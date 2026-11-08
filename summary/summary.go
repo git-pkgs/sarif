@@ -465,11 +465,11 @@ func makeRuleReference(ruleID string, ruleIndex *int, rule resultRule) ruleRefer
 			GUID: rule.ToolComponent.GUID,
 		},
 	}
-	if ruleIndex != nil {
+	if ruleIndex != nil && *ruleIndex >= 0 {
 		reference.Index = *ruleIndex
 		reference.HasIndex = true
 	}
-	if componentIndex := rule.ToolComponent.Index; componentIndex != nil {
+	if componentIndex := rule.ToolComponent.Index; componentIndex != nil && *componentIndex >= 0 {
 		reference.Component.Index = *componentIndex
 		reference.Component.HasIndex = true
 	}

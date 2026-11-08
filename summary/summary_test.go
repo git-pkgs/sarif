@@ -155,7 +155,7 @@ func TestInspectResolvesExtensionRuleReferences(t *testing.T) {
     },
     "results": [
       {"rule": {"index": 0, "toolComponent": {"index": 0}}, "message": {"text": "index"}},
-      {"rule": {"id": "ext-note", "toolComponent": {"name": "plugin"}}, "message": {"text": "name"}},
+      {"rule": {"id": "ext-note", "index": -1, "toolComponent": {"name": "plugin", "index": -1}}, "message": {"text": "name"}},
       {"rule": {"guid": "22222222-2222-4222-8222-222222222222", "toolComponent": {"guid": "11111111-1111-4111-8111-111111111111"}}, "message": {"text": "guid"}}
     ]
   }]
