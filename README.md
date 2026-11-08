@@ -92,6 +92,36 @@ if sarif.Valid(log) {
 }
 ```
 
+## Bounded summaries
+
+The `summary` package reads aggregate evidence without constructing the full
+generated SARIF model. Input bytes, distinct values, and tool records are
+bounded for use with stored analysis logs:
+
+```go
+file, err := os.Open("results.sarif")
+if err != nil {
+    log.Fatal(err)
+}
+defer file.Close()
+
+result, err := summary.Inspect(file, summary.Options{
+    MaxBytes:        16 << 20,
+    MaxUniqueValues: 5_000,
+    MaxTools:        100,
+})
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Println(result.Tools, result.Levels, result.Rules)
+```
+
+The summary includes runs, results, occurrence counts, tools, effective result
+levels, baseline states, rules, taxa, and suppressions. Level resolution uses
+non-failing result kinds, explicit result levels, and rule defaults referenced
+by index or ID. `Truncated` is true when a value or tool limit was reached.
+
 ## Regenerating Types
 
 Types are generated from the bundled SARIF JSON schema:
